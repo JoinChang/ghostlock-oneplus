@@ -11,7 +11,7 @@
  */
 
 #include "common.h"
-#include "../offsets.h"
+#include "offsets.h"
 #include <sys/ioctl.h>
 #include <sys/mman.h>
 #include <linux/perf_event.h>
