@@ -107,10 +107,10 @@ Write 1 corrupts `selinux_state` bytes beyond `enforcing`, breaking `netif egres
 ```bash
 NDK=/path/to/android-ndk
 $NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android35-clang \
-  -O2 -Wall -Isrc -DTARGET_CONFIG_H="targets/ace6t/target.h" \
-  src/targets/ace6t/main.c src/targets/ace6t/util.c src/slide.c \
-  src/targets/ace6t/fops.c src/pipe.c src/root.c \
-  src/targets/ace6t/miniadb.c \
+  -O2 -Wall -Isrc/core -Isrc/devices -DTARGET_CONFIG_H="target.h" \
+  src/core/main.c src/core/util.c src/core/slide.c \
+  src/core/fops.c src/core/pipe.c src/core/root.c \
+  src/core/miniadb.c \
   -o ghostlock -fPIE -pie -pthread
 ```
 
@@ -185,13 +185,14 @@ The core exploit is device-agnostic. Adaptation may require:
 
 | File | Description |
 |------|-------------|
-| `src/targets/ace6t/main.c` | Exploit entry, Write 1/2, bootstrap, root script |
-| `src/targets/ace6t/offsets.h` | Multi-version kernel offset lookup table |
-| `src/targets/ace6t/target.h` | Default offsets, memory layout, struct field constants |
-| `src/targets/ace6t/util.c` | Heap spray, kernelsnitch, slab drain |
-| `src/targets/ace6t/fops.c` | pselect route, PI write mechanism |
-| `src/targets/ace6t/miniadb.c` | Mini ADB client (TCP + RSA auth) |
-| `src/targets/ace6t/common.h` | Timing parameters, macros |
+| `src/core/main.c` | Exploit entry, Write 1/2, bootstrap, root script |
+| `src/core/fops.c` | pselect route, PI write mechanism |
+| `src/core/util.c` | Heap spray, kernelsnitch, slab drain |
+| `src/core/miniadb.c` | Mini ADB client (TCP + RSA auth) |
+| `src/core/common.h` | Timing parameters, macros |
+| `src/core/target.h` | Memory layout, struct field constants |
+| `src/devices/offsets.h` | Aggregates all device offset tables |
+| `src/devices/<device>/offsets.h` | Per-device kernel offset entries |
 | `src/slide.c` | SLIDE kernel address leak |
 | `src/pipe.c` | Pipe buffer manipulation |
 | `src/root.c` | Root shell setup |
