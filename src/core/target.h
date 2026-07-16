@@ -4,7 +4,7 @@
 #define BUILD_VARIANT_LABEL "ghostlock_oneplus"
 #define BUILD_FINGERPRINT "oneplus/ghostlock"
 
-/* 内核地址空间 (VA_BITS=39) */
+/* Kernel address space (VA_BITS=39) */
 #define KIMAGE_TEXT_BASE 0xffffffc080000000ULL
 #define P0_PAGE_OFFSET 0xffffff8000000000ULL
 #define P0_PHYS_OFFSET 0x80000000ULL
@@ -16,7 +16,7 @@
 #define DIRECT_MAP_END 0xffffff9000000000ULL
 #define VMEMMAP_START 0xfffffffe00000000ULL
 
-/* 全局符号偏移 (kallsyms) */
+/* Global symbol offsets (kallsyms) */
 #define INIT_TASK_OFF          0x0240cf00ULL
 #define INIT_CRED_OFF          0x02422c70ULL
 #define INIT_UTS_NS_OFF        0x02594d88ULL
@@ -49,7 +49,7 @@
 #define SLIDE_RANDOM_BOOT_ID_DATA_OFF 0x026aa868ULL
 #define SLIDE_SYSCTL_BOOTID_OFF       0x026aa868ULL
 
-/* 派生宏 */
+/* Derived macros */
 #define INIT_TASK           (KIMAGE_TEXT_BASE + INIT_TASK_OFF)
 #define INIT_CRED           (KIMAGE_TEXT_BASE + INIT_CRED_OFF)
 #define INIT_UTS_NS         (KIMAGE_TEXT_BASE + INIT_UTS_NS_OFF)
@@ -81,7 +81,7 @@
 
 #define PSELECT_WAITER_WORD_SHIFT 0
 
-/* 结构体偏移 (BTF verified) */
+/* Struct field offsets (BTF verified) */
 #define WAITER_LOCAL_OFF          0x80
 #define WAITER_TREE_ENTRY_OFF     0x00
 #define WAITER_PI_TREE_ENTRY_OFF  0x28
@@ -186,12 +186,12 @@
 #define CFG_BIN_BUFFER_SIZE_OFF 96
 #define CFG_CB_MAX_SIZE_OFF     100
 
-/* 2-write 专用 */
+/* Write 2 specific */
 #define CRED_COPY_OFF 0x1080
 
 #endif
 
-/* SLIDE mode pselect shift (pselect vs select 栈帧差 16B = 2 words) */
+/* SLIDE mode pselect shift (pselect vs select stack frame diff 16B = 2 words) */
 #define SLIDE_PSELECT_WORD_SHIFT 2
 #define SLIDE_PSELECT_NFDS 320
 #define SLIDE_USE_SELECT 1

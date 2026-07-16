@@ -179,7 +179,7 @@ long sched_setattr_tid(int tid, int nice_value) {
   struct local_sched_attr attr;
   memset(&attr, 0, sizeof(attr));
   attr.size = sizeof(attr);
-  attr.sched_policy = 3;    /* SCHED_BATCH — nice 变化触发 PI walk (pi=true) */
+  attr.sched_policy = 3;    /* SCHED_BATCH — nice change triggers PI walk (pi=true) */
   attr.sched_nice = nice_value;
   errno = 0;
   long ret = syscall(274, tid, &attr, 0);
@@ -852,7 +852,7 @@ ssize_t kernel_read_data(int fd, uintptr_t target, void *data, size_t len) {
   return configfs_read_once(fd, target, data, len);
 }
 
-/* tokay fops.c 需要的访问函数 */
+/* Accessor functions used by fops.c */
 uintptr_t pselect_write_value(void) {
   return pselect_custom_value;
 }
@@ -871,7 +871,7 @@ void set_pselect_write(uintptr_t target, uintptr_t value) {
   pselect_custom_write = 1;
 }
 
-/* tokay fops.c 需要的环境变量函数 */
+/* Environment variable helpers used by fops.c */
 int env_flag(const char *name, int def) {
   char *v = getenv(name);
   if (!v) return def;
