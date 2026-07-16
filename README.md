@@ -2,6 +2,10 @@
 
 Kernel exploit for OnePlus devices with locked bootloader. Achieves root + KernelSU installation without unlocking bootloader or modifying boot image. Runtime auto-detection of kernel version with multi-device offset table.
 
+<p align="center">
+  <img src="assets/screenshot.jpg" width="300" alt="GhostLock running on OnePlus Ace 6T with KernelSU (LKM, Jailbreak mode)">
+</p>
+
 ## Vulnerability
 
 **CVE-2026-43499** — Futex PI (Priority Inheritance) Use-After-Free
