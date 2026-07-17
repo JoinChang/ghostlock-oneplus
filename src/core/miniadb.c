@@ -4,6 +4,7 @@
  * opens a shell, and runs a command. Uses dlopen(libcrypto.so) for RSA.
  */
 #include "common.h"
+#include "runtime_offsets.h"
 #include <dlfcn.h>
 #include <sys/socket.h>
 #include <netinet/in.h>

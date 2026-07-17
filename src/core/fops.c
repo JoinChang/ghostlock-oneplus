@@ -1,4 +1,5 @@
 #include "common.h"
+#include "runtime_offsets.h"
 #include <time.h>
 static double fops_elapsed_ms(struct timespec *ref) {
   struct timespec now;

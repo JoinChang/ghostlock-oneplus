@@ -1,4 +1,5 @@
 #include "common.h"
+#include "runtime_offsets.h"
 
 int root_child_done;
 uint8_t selinux_before = 0xff;

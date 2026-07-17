@@ -1,4 +1,5 @@
 #include "common.h"
+#include "runtime_offsets.h"
 
 #define PIPE_SHAPE_ROUNDS 0
 #define PHYSRW_PROOF_OFF 0x7000

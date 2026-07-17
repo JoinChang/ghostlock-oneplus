@@ -1,4 +1,5 @@
 #include "common.h"
+#include "runtime_offsets.h"
 
 #define SLIDE_MAX_ATTEMPTS 20
 #define SLIDE_CONSUME_DELAY 2000
