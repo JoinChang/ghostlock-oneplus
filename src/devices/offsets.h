@@ -36,6 +36,7 @@ struct kernel_offsets {
   /* rt_mutex_waiter */
   uint32_t waiter_tree, waiter_pi_tree, waiter_task, waiter_lock;
   uint32_t waiter_wake_state, waiter_prio, waiter_deadline, waiter_ww_ctx;
+  uint32_t waiter_pi_tree_prio, waiter_pi_tree_deadline;
   /* cred */
   uint32_t cred_uid, cred_securebits, cred_caps, cred_security;
   /* file_operations */
@@ -76,6 +77,7 @@ struct kernel_offsets {
   .waiter_tree=0x00, .waiter_pi_tree=0x28, .waiter_task=0x50, \
   .waiter_lock=0x58, .waiter_wake_state=0x60, .waiter_prio=0x18, \
   .waiter_deadline=0x20, .waiter_ww_ctx=0x68, \
+  .waiter_pi_tree_prio=0x40, .waiter_pi_tree_deadline=0x48, \
   .cred_uid=0x08, .cred_securebits=0x28, .cred_caps=0x30, .cred_security=0x80, \
   .fops_owner=0x00, .fops_llseek=0x10, .fops_read=0x18, .fops_write=0x20, \
   .fops_read_iter=0x28, .fops_write_iter=0x30, .fops_ioctl=0x50, \
@@ -94,6 +96,7 @@ struct kernel_offsets {
   .waiter_tree=0x00, .waiter_pi_tree=0x18, .waiter_task=0x30, \
   .waiter_lock=0x38, .waiter_wake_state=0x40, .waiter_prio=0x44, \
   .waiter_deadline=0x48, .waiter_ww_ctx=0x50, \
+  .waiter_pi_tree_prio=0x44, .waiter_pi_tree_deadline=0x48, \
   .cred_uid=0x04, .cred_securebits=0x24, .cred_caps=0x28, .cred_security=0x78, \
   .fops_owner=0x00, .fops_llseek=0x08, .fops_read=0x10, .fops_write=0x18, \
   .fops_read_iter=0x20, .fops_write_iter=0x28, .fops_ioctl=0x50, \
