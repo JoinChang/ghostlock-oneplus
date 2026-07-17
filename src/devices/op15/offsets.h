@@ -1,6 +1,7 @@
-/* OnePlus 15 (PLK110) — SM8845 / Snapdragon 8s Elite */
+/* OnePlus 15 (PLK110) — SM8845 / Snapdragon 8s Elite, kernel 6.12 */
 
-OFFSETS_ENTRY("6.12.23-android16-5-gb2a876903b49-ab14541642-4k",  /* PLK110_16.0.8.301 (untested) */
+OFFSETS_ENTRY("6.12.23-android16-5-gb2a876903b49-ab14541642-4k",
+  .kimage_text_base=0xffffffc080000000ULL, STRUCT_OFFSETS_6_12,
   .off_init_task=0x023ECF00, .off_init_cred=0x02402A68, .off_init_uts_ns=0x02574650,
   .off_empty_zero_page=0x02614000, .off_root_task_group=0x0261C580,
   .off_selinux_enforcing=0x026684F0, .off_kptr_restrict=0x023EB638,

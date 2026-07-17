@@ -17,7 +17,100 @@
 
 static const struct kernel_offsets *active_offsets = NULL;
 
-/* Override target.h _OFF macros with dynamic offsets from offsets.h table */
+/* Override target.h macros with dynamic offsets from offsets.h table */
+#undef KIMAGE_TEXT_BASE
+#define KIMAGE_TEXT_BASE              active_offsets->kimage_text_base
+
+/* Struct field offsets */
+#undef TASK_CRED_OFF
+#undef TASK_REAL_CRED_OFF
+#undef TASK_PID_OFF
+#undef TASK_TGID_OFF
+#undef TASK_REAL_PARENT_OFF
+#undef TASK_COMM_OFF
+#undef TASK_TASKS_OFF
+#undef TASK_ATOMIC_FLAGS_OFF
+#undef TASK_SECCOMP_OFF
+#undef MM_OWNER_OFF
+#undef FAKE_TASK_USAGE_OFF
+#undef FAKE_TASK_PRIO_OFF
+#undef FAKE_TASK_NORMAL_PRIO_OFF
+#undef FAKE_TASK_TASK_GROUP_OFF
+#undef FAKE_TASK_PI_LOCK_OFF
+#undef FAKE_TASK_PI_WAITERS_OFF
+#undef FAKE_TASK_PI_TOP_TASK_OFF
+#undef FAKE_TASK_PI_BLOCKED_ON_OFF
+#undef WAITER_TREE_ENTRY_OFF
+#undef WAITER_PI_TREE_ENTRY_OFF
+#undef WAITER_TASK_OFF
+#undef WAITER_LOCK_OFF
+#undef WAITER_WAKE_STATE_OFF
+#undef WAITER_PRIO_OFF
+#undef WAITER_DEADLINE_OFF
+#undef WAITER_WW_CTX_OFF
+#undef CRED_UID_OFF
+#undef CRED_SECUREBITS_OFF
+#undef CRED_CAPS_OFF
+#undef CRED_SECURITY_OFF
+#undef FOPS_OWNER_OFF
+#undef FOPS_LLSEEK_OFF
+#undef FOPS_READ_OFF
+#undef FOPS_WRITE_OFF
+#undef FOPS_READ_ITER_OFF
+#undef FOPS_WRITE_ITER_OFF
+#undef FOPS_IOCTL_OFF
+#undef FOPS_COMPAT_IOCTL_OFF
+#undef FOPS_MMAP_OFF
+#undef FOPS_OPEN_OFF
+#undef FOPS_RELEASE_OFF
+#undef FOPS_SPLICE_READ_OFF
+#undef FOPS_SHOW_FDINFO_OFF
+
+#define TASK_CRED_OFF                 active_offsets->task_cred
+#define TASK_REAL_CRED_OFF            active_offsets->task_real_cred
+#define TASK_PID_OFF                  active_offsets->task_pid
+#define TASK_TGID_OFF                 active_offsets->task_tgid
+#define TASK_REAL_PARENT_OFF          active_offsets->task_real_parent
+#define TASK_COMM_OFF                 active_offsets->task_comm
+#define TASK_TASKS_OFF                active_offsets->task_tasks
+#define TASK_ATOMIC_FLAGS_OFF         active_offsets->task_atomic_flags
+#define TASK_SECCOMP_OFF              active_offsets->task_seccomp
+#define MM_OWNER_OFF                  active_offsets->mm_owner
+#define FAKE_TASK_USAGE_OFF           active_offsets->task_usage
+#define FAKE_TASK_PRIO_OFF            active_offsets->task_prio
+#define FAKE_TASK_NORMAL_PRIO_OFF     active_offsets->task_normal_prio
+#define FAKE_TASK_TASK_GROUP_OFF      active_offsets->task_sched_task_group
+#define FAKE_TASK_PI_LOCK_OFF         active_offsets->task_pi_lock
+#define FAKE_TASK_PI_WAITERS_OFF      active_offsets->task_pi_waiters
+#define FAKE_TASK_PI_TOP_TASK_OFF     active_offsets->task_pi_top_task
+#define FAKE_TASK_PI_BLOCKED_ON_OFF   active_offsets->task_pi_blocked_on
+#define WAITER_TREE_ENTRY_OFF         active_offsets->waiter_tree
+#define WAITER_PI_TREE_ENTRY_OFF      active_offsets->waiter_pi_tree
+#define WAITER_TASK_OFF               active_offsets->waiter_task
+#define WAITER_LOCK_OFF               active_offsets->waiter_lock
+#define WAITER_WAKE_STATE_OFF         active_offsets->waiter_wake_state
+#define WAITER_PRIO_OFF               active_offsets->waiter_prio
+#define WAITER_DEADLINE_OFF           active_offsets->waiter_deadline
+#define WAITER_WW_CTX_OFF             active_offsets->waiter_ww_ctx
+#define CRED_UID_OFF                  active_offsets->cred_uid
+#define CRED_SECUREBITS_OFF           active_offsets->cred_securebits
+#define CRED_CAPS_OFF                 active_offsets->cred_caps
+#define CRED_SECURITY_OFF             active_offsets->cred_security
+#define FOPS_OWNER_OFF                active_offsets->fops_owner
+#define FOPS_LLSEEK_OFF               active_offsets->fops_llseek
+#define FOPS_READ_OFF                 active_offsets->fops_read
+#define FOPS_WRITE_OFF                active_offsets->fops_write
+#define FOPS_READ_ITER_OFF            active_offsets->fops_read_iter
+#define FOPS_WRITE_ITER_OFF           active_offsets->fops_write_iter
+#define FOPS_IOCTL_OFF                active_offsets->fops_ioctl
+#define FOPS_COMPAT_IOCTL_OFF         active_offsets->fops_compat_ioctl
+#define FOPS_MMAP_OFF                 active_offsets->fops_mmap
+#define FOPS_OPEN_OFF                 active_offsets->fops_open
+#define FOPS_RELEASE_OFF              active_offsets->fops_release
+#define FOPS_SPLICE_READ_OFF          active_offsets->fops_splice_read
+#define FOPS_SHOW_FDINFO_OFF          active_offsets->fops_show_fdinfo
+
+/* Global symbol offsets */
 #undef SELINUX_ENFORCING_OFF
 #undef INIT_CRED_OFF
 #undef INIT_TASK_OFF
