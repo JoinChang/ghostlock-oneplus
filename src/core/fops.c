@@ -149,30 +149,22 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
   }
 
   int words_per_set = pselect_words_per_set();
-  struct pselect_waiter_word {
-    int word;
+
+  /* Use the per-kernel word table from offsets.h */
+  for (int i = 0; i < 20 && active_offsets->pselect_words[i].word >= 0; i++) {
+    int word = active_offsets->pselect_words[i].word;
     uint64_t value;
-    const char *name;
-  } words[] = {
-    {2, 0, "tree_pc"},
-    {3, 0, "tree_right"},
-    {4, 0, "tree_left"},
-    {5, 1, "tree_prio"},
-    {6, 0, "tree_deadline"},
-    {7, 0, "pi_parent"},
-    {8, 0, "pi_right"},
-    {9, 0, "pi_left"},
-    {10, 1, "pi_prio"},
-    {11, 0, "pi_deadline"},
-    {12, pselect_custom_write_enabled() ? fake_task : text_addr(INIT_TASK),
-     "task"},
-    {13, fake_lock, "lock"},
-    {14, 3, "wake_state"},
-  };
-  for (size_t i = 0; i < sizeof(words) / sizeof(words[0]); i++) {
-    struct pselect_waiter_word *w = &words[i];
-    pselect_put_waiter_word(
-        in, out, ex, words_per_set, w->word, w->value, w->name);
+    switch (active_offsets->pselect_words[i].value_flag) {
+      case WV_ZERO: value = 0; break;
+      case WV_PRIO: value = 1; break;
+      case WV_TASK: value = pselect_custom_write_enabled()
+                            ? fake_task : text_addr(INIT_TASK); break;
+      case WV_LOCK: value = fake_lock; break;
+      case WV_WAKE: value = 3; break;
+      case WV_WAKE_PRIO: value = 3 | (1ULL << 32); break; /* packed: low32=wake, high32=prio */
+      default: value = 0; break;
+    }
+    pselect_put_waiter_word(in, out, ex, words_per_set, word, value, "w");
   }
 }
 
