@@ -239,6 +239,13 @@ void do_pselect_fake_lock_route(void) {
             (unsigned long long)fdset_get_word(&ex, 2),
             (unsigned long long)fdset_get_word(&ex, 3));
     open_selected_fds(&in, &out, &ex, high_read, pipefd[1]);
+    {
+      int set_count = 0;
+      for (int fd = 0; fd < PSELECT_ROUTE_NFDS; fd++)
+        if (FD_ISSET(fd, &in) || FD_ISSET(fd, &out) || FD_ISSET(fd, &ex))
+          set_count++;
+      pr_info("pselect fds with bits set: %d / %d\n", set_count, PSELECT_ROUTE_NFDS);
+    }
 
     atomic_store(&consumer_calls, 0);
     atomic_store(&consumer_success, 0);
@@ -256,11 +263,13 @@ void do_pselect_fake_lock_route(void) {
 #endif
     };
 
-    pr_info("pselect pre-select +%.0fms\n", fops_elapsed_ms(&route_t0));
+    pr_info("pselect pre-select +%.0fms delay=%d nfds=%d\n",
+            fops_elapsed_ms(&route_t0), delay_usec, PSELECT_ROUTE_NFDS);
     errno = 0;
     int ret = select(PSELECT_ROUTE_NFDS, &in, &out, &ex, &timeout);
     int saved_errno = errno;
-    pr_info("pselect post-select +%.0fms ret=%d\n", fops_elapsed_ms(&route_t0), ret);
+    pr_info("pselect post-select +%.0fms ret=%d errno=%d\n",
+            fops_elapsed_ms(&route_t0), ret, saved_errno);
     atomic_store(&punch_consume_go, 0);
     calls = atomic_load(&consumer_calls);
     success = atomic_load(&consumer_success);

@@ -119,11 +119,16 @@ void *consumer_thread(void *arg __attribute__((unused))) {
         if (atomic_load(&punch_consume_stop) ||
             atomic_load(&punch_consume_go) != seq) break;
         atomic_fetch_add(&consumer_calls, 1);
+        pr_info("consumer: pre-sched tid=%d\n", tid);
         errno = 0;
         long sched_ret = sched_setattr_tid(tid, PSELECT_CONSUMER_NICE);
+        int sched_errno = errno;
+        pr_info("consumer: sched ret=%ld errno=%d\n", sched_ret, sched_errno);
         if (sched_ret != 0) {
+          pr_info("consumer: pre-futex-lock\n");
           struct timespec ft = {.tv_sec = 0, .tv_nsec = 50000000};
           long fret = futex_op(&f_pi_target, FUTEX_LOCK_PI, 0, &ft, NULL, 0);
+          pr_info("consumer: futex-lock ret=%ld errno=%d\n", fret, errno);
           if (fret == 0) {
             futex_op(&f_pi_target, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
             sched_ret = 0;
