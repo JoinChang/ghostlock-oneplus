@@ -9,6 +9,7 @@
 #include "runtime_offsets.h"
 #include <sys/ioctl.h>
 #include <sys/mman.h>
+#include <sys/resource.h>
 #include <linux/perf_event.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -87,20 +88,20 @@ void *waiter_thread(void *arg __attribute__((unused))) {
     pr_info("DIAG: f_wait=%u f_pi_target=%u f_pi_chain=%u\n",
             f_wait, f_pi_target, f_pi_chain);
 
-    pr_info("DIAG: test 1 — sched_setattr on waiter (self) tid=%d\n", tid);
+    pr_info("DIAG: test 1 — setpriority on waiter tid=%d (shallow stack)\n", tid);
     errno = 0;
-    long r1 = sched_setattr_tid(tid, 19);
+    long r1 = syscall(SYS_setpriority, PRIO_PROCESS, tid, 19);
     pr_info("DIAG: test 1 ret=%ld errno=%d\n", r1, errno);
 
-    pr_info("DIAG: test 2 — sched_setattr on waiter again tid=%d\n", tid);
+    pr_info("DIAG: test 2 — sched_setscheduler on waiter tid=%d\n", tid);
     errno = 0;
-    long r2 = sched_setattr_tid(tid, 10);
+    struct sched_param sp_param = { .sched_priority = 0 };
+    long r2 = syscall(SYS_sched_setscheduler, tid, 3 /*SCHED_BATCH*/, &sp_param);
     pr_info("DIAG: test 2 ret=%ld errno=%d\n", r2, errno);
 
-    int ppid = (int)getppid();
-    pr_info("DIAG: test 3 — sched_setattr on parent pid=%d (baseline, no PI)\n", ppid);
+    pr_info("DIAG: test 3 — sched_setattr on waiter tid=%d (deep stack)\n", tid);
     errno = 0;
-    long r3 = sched_setattr_tid(ppid, 19);
+    long r3 = sched_setattr_tid(tid, 10);
     pr_info("DIAG: test 3 ret=%ld errno=%d\n", r3, errno);
 
     pr_info("DIAG: all tests passed, no crash\n");
