@@ -80,6 +80,17 @@ void *waiter_thread(void *arg __attribute__((unused))) {
   timeout.tv_sec += ROUTE_WAIT_SECONDS;
   atomic_store(&waiter_waiting, 1);
   futex_op(&f_wait, FUTEX_WAIT_REQUEUE_PI, 0, &timeout, &f_pi_target, 0);
+  if (env_flag("DIAG_SKIP_SELECT", 0)) {
+    pr_info("DIAG: futex returned, testing sched_setattr on self tid=%d\n", tid);
+    errno = 0;
+    long diag_ret = sched_setattr_tid(tid, 19);
+    pr_info("DIAG: sched_setattr ret=%ld errno=%d (if 0, PI walk survived)\n", diag_ret, errno);
+    pr_info("DIAG: skipping select, route done\n");
+    atomic_store(&route_done, 1);
+    futex_op(&f_pi_chain, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+    while (!atomic_load(&owner_chain_done)) usleep(1000);
+    return NULL;
+  }
   do_pselect_fake_lock_route();
   atomic_store(&route_done, 1);
   futex_op(&f_pi_chain, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
