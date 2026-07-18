@@ -44,9 +44,7 @@ uint64_t slide_bootid_want;
 ssize_t slide_bootid_restore_ret = -1;
 
 static int route_delay_usec(int attempt) {
-  int default_delay = pselect_custom_write_enabled() ? 0 : -1;
-  int override = env_int_range("PSELECT_ROUTE_DELAY_USEC",
-                               default_delay, -1, 1000000);
+  int override = env_int_range("PSELECT_ROUTE_DELAY_USEC", -1, -1, 1000000);
   if (override >= 0) {
     return override;
   }
