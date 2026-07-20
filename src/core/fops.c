@@ -138,9 +138,7 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
   if (env_flag("PSELECT_SIMPLE_LAYOUT", 0)) {
     fdset_put_word(in, 0, fake_w0);
     fdset_put_word(in, 3, 0);
-    fdset_put_word(ex, 0,
-                   pselect_custom_write_enabled() ? fake_task :
-                   text_addr(INIT_TASK));
+    fdset_put_word(ex, 0, text_addr(INIT_TASK));
     fdset_put_word(ex, 1, fake_lock);
     fdset_put_word(ex, 2, 3);
     fdset_put_word(ex, 3, 0);
@@ -163,8 +161,7 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
     switch (active_offsets->pselect_words[i].value_flag) {
       case WV_ZERO: value = 0; break;
       case WV_PRIO: value = 1; break;
-      case WV_TASK: value = pselect_custom_write_enabled()
-                            ? fake_task : text_addr(INIT_TASK); break;
+      case WV_TASK: value = text_addr(INIT_TASK); break;
       case WV_LOCK: value = fake_lock; break;
       case WV_WAKE: value = 3; break;
       case WV_WAKE_PRIO: value = 3 | (1ULL << 32); break; /* packed: low32=wake, high32=prio */
