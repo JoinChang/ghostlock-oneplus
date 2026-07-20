@@ -48,6 +48,7 @@ struct kernel_offsets {
   #define WV_TASK  2
   #define WV_LOCK  3
   #define WV_WAKE  4
+  #define WV_W0    6
   struct { int8_t word; int8_t value_flag; } pselect_words[20];
 
   /* Stack alignment shift: compensates for different stack depths between
@@ -114,7 +115,7 @@ struct kernel_offsets {
 #define WV_WAKE_PRIO 5
 #define PSELECT_WORDS_6_1 \
   .pselect_words = { \
-    { 2, WV_ZERO}, /* tree.rb_parent_color */ \
+    { 2, WV_W0},   /* tree.rb_parent_color = fake_w0 (valid parent for rb_erase) */ \
     { 3, WV_ZERO}, /* tree.rb_right */ \
     { 4, WV_ZERO}, /* tree.rb_left */ \
     { 5, WV_ZERO}, /* pi_tree.rb_parent_color */ \

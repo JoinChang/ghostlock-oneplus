@@ -165,6 +165,7 @@ void prepare_pselect_fdsets(fd_set *in, fd_set *out, fd_set *ex) {
       case WV_LOCK: value = fake_lock; break;
       case WV_WAKE: value = 3; break;
       case WV_WAKE_PRIO: value = 3 | (1ULL << 32); break; /* packed: low32=wake, high32=prio */
+      case WV_W0:   value = fake_w0; break;
       default: value = 0; break;
     }
     int global_word = pselect_runtime_shift + word;
