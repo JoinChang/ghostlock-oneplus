@@ -100,7 +100,8 @@ static int pselect_put_global_word(
 static void pselect_put_waiter_word(
     fd_set *in, fd_set *out, fd_set *ex, int words_per_set,
     int waiter_word, uint64_t value, const char *name) {
-  int global_word = PSELECT_WAITER_WORD_SHIFT + waiter_word;
+  int shift = env_int_range("PSELECT_SHIFT", PSELECT_WAITER_WORD_SHIFT, -14, 14);
+  int global_word = shift + waiter_word;
   int placed = pselect_put_global_word(
       in, out, ex, words_per_set, global_word, value);
   if (!placed) {
@@ -228,12 +229,13 @@ void do_pselect_fake_lock_route(void) {
     fd_set out;
     fd_set ex;
     prepare_pselect_fdsets(&in, &out, &ex);
-    pr_info("pselect route setup attempt=%d simple=%d page=%016zx "
+    pr_info("pselect route setup attempt=%d simple=%d shift=%d page=%016zx "
             "fake_lock=%016zx fake_w0=%016zx fake_task=%016zx "
             "in0=%016llx in3=%016llx out0=%016llx ex0=%016llx "
             "ex1=%016llx ex2=%016llx ex3=%016llx\n",
             route_attempt,
             env_flag("PSELECT_SIMPLE_LAYOUT", 0),
+            env_int_range("PSELECT_SHIFT", PSELECT_WAITER_WORD_SHIFT, -14, 14),
             page_base, fake_lock, fake_w0, fake_task,
             (unsigned long long)fdset_get_word(&in, 0),
             (unsigned long long)fdset_get_word(&in, 3),
