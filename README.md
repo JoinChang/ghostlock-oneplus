@@ -1,6 +1,6 @@
 # GhostLock — OnePlus Locked Bootloader Jailbreak
 
-Kernel exploit for OnePlus devices with locked bootloader. Achieves root + KernelSU installation without unlocking bootloader or modifying boot image. Runtime auto-detection of kernel version with multi-device offset table.
+Kernel exploit for OnePlus/OPPO/realme devices with locked bootloader. Achieves root + KernelSU installation without unlocking bootloader or modifying boot image. Runtime auto-detection of kernel version with multi-device offset table.
 
 <p align="center">
   <img src="assets/screenshot.jpg" width="300" alt="GhostLock running on OnePlus Ace 6T with KernelSU (LKM, Jailbreak mode)">
@@ -14,20 +14,73 @@ Affects Linux kernel 2.6.39 ~ 7.1. Fixed in mainline 7.1 (commit `3bfdc63936dd`)
 
 The `pselect6` syscall copies `fd_set` data onto the kernel stack. When combined with the futex PI waiter mechanism, a freed stack frame can be reclaimed as an `rt_mutex_waiter` structure. The rb-tree rebalance during PI chain walk then writes controlled values to arbitrary kernel addresses.
 
-## Tested Devices
+## Supported Devices
 
-| Device | SoC | OS | Kernel | Status |
-|--------|-----|-----|--------|--------|
-| OnePlus Ace 6T | SM8845 (Snapdragon 8s Elite) | Android 16, ColorOS 16.0.2.403 | `6.12.38-...-ab14275539` | **Verified** |
-| OnePlus Ace 6T | SM8845 (Snapdragon 8s Elite) | Android 16, ColorOS 16.0.8.301 | `6.12.38-...-ab14552068` | **Verified** |
+### Verified
 
-### Untested (offsets extracted, not verified on device)
+| Device | SoC | Kernel | Status |
+|--------|-----|--------|--------|
+| OnePlus Ace 6T (PLR110) | SM8845 | `6.12.38-...-ab14275539` | **Working** |
+| OnePlus Ace 6T (PLR110) | SM8845 | `6.12.38-...-ab14552068` | **Working** |
 
-| Device | Kernel | Notes |
-|--------|--------|-------|
-| OnePlus 15 | `6.12.23-...-ab14541642` | Offsets extracted from OTA boot.img |
+### Offsets Extracted (pending device test)
 
-Other OnePlus devices with the same SoC family and Android 16 / kernel 6.12.x should be adaptable by extracting offsets from their `boot.img`.
+| Device | SoC | Kernel | Notes |
+|--------|-----|--------|-------|
+| OnePlus 15T (PLZ110) | SM8845 | `6.12.38-...-ab14552068` | Same kernel as Ace 6T. QEMU verified SP diff=-64. |
+| OnePlus 15 (OP615) | SM8845 | `6.12.23-...-ab14541642` | Offsets from OTA boot.img |
+| OnePlus 13 (IN2060) | SM8750 | `6.6.89-...-abogki446052083` | QEMU verified SP diff=-64. Use `PSELECT_SHIFT=-2`. |
+
+### Not Feasible (stack layout incompatible)
+
+The pselect stack overlay only works when the freed `rt_mutex_waiter` lands within the user-controllable region of the `stack_fds` buffer. Where the waiter lands is determined by the compiler output (PGO + LTO), not the kernel version. See [Stack Layout](#stack-layout-feasibility) for details.
+
+| Device | SoC | Kernel | Waiter Word | Reason |
+|--------|-----|--------|-------------|--------|
+| OPPO Find X9 Ultra | SM8750 | 6.12.58 | 14 | task/lock in zeroed area |
+| realme RMX5070 | SM6650 | 6.1.141 | 13 | task/lock in zeroed area |
+| realme RMX3852 | SM8635 | 6.1.141 | 13 | Same branch as RMX5070 |
+| OPPO Pad 5 (OPD2502) | MT6878 | 6.1.134 | 13 | Same branch as RMX5070 |
+
+## Stack Layout Feasibility
+
+With `NFDS=320`, the kernel's `core_sys_select` allocates a 256-byte `stack_fds` buffer:
+
+```
+stack_fds:  0    5    10   14 | 15   20   25   29
+            ├─in─┤─out─┤─ex──┤ ├res_in┤res_out┤res_ex┤
+            ◄── USER CONTROLLED ──►│◄── KERNEL ZEROED ──►
+```
+
+The exploit writes fake waiter fields (task, lock) into the fd_set input bitmaps. For this to work, the waiter's `task` and `lock` fields must fall in the controllable zone (words 0-14).
+
+```
+Ace 6T ✅ (waiter at word 2):
+  ░░████████████████░░│░░░░░░░░░░░░░░░░░░
+    ▲waiter      t  l │
+    task/lock controllable
+
+RMX5070 ❌ (waiter at word 13):
+  ░░░░░░░░░░░░░████│██████████████░░░░░░
+                 ▲  │    t     l
+               waiter  task/lock ZEROED
+```
+
+**Feasibility rule**: waiter word + 11 (lock offset in rt_waiter_node) must be ≤ 14. Maximum feasible waiter word is **3**.
+
+The waiter position is determined by the compiler's stack frame layout (PGO + LTO + BOLT optimization profiles), which varies per SoC branch. Same kernel version can have different layouts on different SoCs.
+
+### PSELECT_SHIFT
+
+Different kernels place the waiter at different positions within the controllable zone. Use `PSELECT_SHIFT` to adjust:
+
+```bash
+# Default (Ace 6T, 6.12): shift=0
+/data/local/tmp/a/e
+
+# OnePlus 13 (6.6): shift=-2
+PSELECT_SHIFT=-2 /data/local/tmp/a/e
+```
 
 ## Exploit Flow
 
@@ -59,52 +112,6 @@ BOOT_COMPLETED → BootCompletedReceiver
   ├─ su available → skip (soft reboot / already rooted)
   └─ no root → GhostlockService → setsid exploit --bootstrap
 ```
-
-## Key Technical Details
-
-### Runtime Kernel Matching
-
-Offsets are stored in `offsets.h` as a lookup table keyed by `uname -r`. The exploit auto-selects at startup and refuses to run on unknown kernels.
-
-```c
-static const struct kernel_offsets known_offsets[] = {
-  OFFSETS_ENTRY("6.12.38-android16-5-g8c67d4274c0a-ab14275539-4k", ...),
-  OFFSETS_ENTRY("6.12.38-android16-5-g844001fb8721-ab14552068-4k", ...),
-  OFFSETS_ENTRY("6.12.23-android16-5-gb2a876903b49-ab14541642-4k", ...),
-  { .uname_r = NULL }
-};
-```
-
-### perf_find_task Fix (kernel 6.12)
-
-```c
-// Bug: bit 32 invalid on ARM64 → kernel rejects REGS_INTR
-pe.sample_regs_intr = (1ULL << 33) - 1;  // BROKEN — 24-byte samples, no regs
-
-// Fix: bits 0-31 only (x0-PC)
-pe.sample_regs_intr = (1ULL << 32) - 1;  // WORKS — 280-byte samples with regs
-```
-
-### Write 2 mode=2
-
-```c
-// mode=1: writes slab address to cred → UAF panic (~50%)
-do_one_write(target, "W2: cred", 1);  // BROKEN
-
-// mode=2: writes data_addr(INIT_CRED) → valid pointer, zero panic
-do_one_write(target, "W2: cred", 2);  // WORKS
-```
-
-### Mini ADB Client
-
-Built-in ADB protocol implementation (`miniadb.c`) for bootstrap mode:
-- TCP connect to localhost:5555
-- RSA authentication via `dlopen(libcrypto.so)`
-- Shell command execution without app seccomp restrictions
-
-### SELinux Network Fix
-
-Write 1 corrupts `selinux_state` bytes beyond `enforcing`, breaking `netif egress` permissions. Fixed by running `load_policy` from KSU's `su` context after exploit completes.
 
 ## Build
 
@@ -144,10 +151,13 @@ After first successful jailbreak, `persist.adb.tcp.port=5555` is set via `resetp
 ## Usage
 
 ```bash
-/data/local/tmp/a/e              # Full exploit (adb shell)
-/data/local/tmp/a/e --bootstrap  # Phone standalone (app context)
-/data/local/tmp/a/e --write1     # SELinux disable only
+/data/local/tmp/a/e                        # Full exploit (adb shell)
+/data/local/tmp/a/e --bootstrap            # Phone standalone (app context)
+/data/local/tmp/a/e --write1               # SELinux disable only
+PSELECT_SHIFT=-2 /data/local/tmp/a/e       # Override stack layout shift
 ```
+
+> **Important**: Run within 30 seconds of boot for best KernelSnitch timing reliability.
 
 ## Adding New Devices / Kernel Versions
 
@@ -183,7 +193,7 @@ The core exploit is device-agnostic. Adaptation may require:
 - Different `VA_BITS` (48 vs 39) → update `target.h` memory layout
 - Different timing parameters → tune `common.h`
 - Different ashmem implementation (C vs Rust) → update symbol matching
-- No OnePlus `secureguard` → simplifies things (one less issue)
+- Different `PSELECT_SHIFT` → determine via QEMU kprobe test
 
 ## Files
 
@@ -202,6 +212,7 @@ The core exploit is device-agnostic. Adaptation may require:
 | `src/root.c` | Root shell setup |
 | `tools/extract_target.py` | Offset extraction from kallsyms |
 | `tools/extract_btf.py` | Struct offset extraction from BTF |
+| `tools/check_feasibility.py` | Stack layout feasibility checker |
 
 ## License
 
