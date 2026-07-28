@@ -23,6 +23,7 @@ The `pselect6` syscall copies `fd_set` data onto the kernel stack. When combined
 | OnePlus Ace 6T (PLR110) | SM8845 | `6.12.38-...-ab14275539` | **Working** |
 | OnePlus Ace 6T (PLR110) | SM8845 | `6.12.38-...-ab14552068` | **Working** |
 | OnePlus 15 (CPH2749) | SM8850 | `6.12.23-...-ab14541642` | **Working** |
+| Xiaomi 17 (pudding) | SM8850 | `6.12.23-...-abogki463945075` | **Working** |
 
 ### Offsets Extracted (pending device test)
 

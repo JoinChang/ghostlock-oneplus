@@ -56,6 +56,7 @@ static const struct kernel_offsets known_offsets[] = {
 #include "op13/offsets.h"
 #include "op15/offsets.h"
 #include "findx9ultra/offsets.h"
+#include "pudding/offsets.h"
   { .uname_r = NULL }
 };
 
