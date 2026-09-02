@@ -131,16 +131,20 @@ def main() -> int:
             f"Python 3.9 or newer is required by vmlinux-to-elf (found {sys.version.split()[0]})"
         )
 
-    magisk = required_env("MAGISK_REPO_DIR")
+    magisk = os.environ.get("MAGISK_REPO_DIR")
     vmlinux_to_elf = required_env("VMLINUX_TO_ELF_REPO_DIR")
-    magisk_url = configured_url("MAGISK_REPO_URL", MAGISK_URL)
     vmlinux_url = configured_url("VMLINUX_TO_ELF_REPO_URL", VMLINUX_TO_ELF_URL)
 
-    sync_repository(magisk, magisk_url, submodules=True)
+    if magisk:
+        magisk_url = configured_url("MAGISK_REPO_URL", MAGISK_URL)
+        sync_repository(magisk, magisk_url, submodules=True)
     sync_repository(vmlinux_to_elf, vmlinux_url, submodules=False)
     print()
     print("Bootstrap complete.")
-    print(f"  Magisk:          {magisk}")
+    if magisk:
+        print(f"  Magisk:          {magisk}")
+    else:
+        print("  Magisk:          skipped (set MAGISK_REPO_DIR to enable --magiskboot)")
     print(f"  vmlinux-to-elf:  {vmlinux_to_elf}")
     print("  Python/dependencies: managed per invocation by uv script metadata")
     return 0

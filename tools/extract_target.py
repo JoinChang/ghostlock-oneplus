@@ -72,30 +72,6 @@ OFFSET_FIELDS = {
     "SLIDE_SYSCTL_BOOTID_OFF": "off_slide_boot_id",
 }
 
-def find_kallsyms_in_kernel(data):
-    """Find and parse the embedded kallsyms table in a raw kernel image."""
-    # Look for the linux_banner string to find kernel base
-    banner_pat = b"Linux version "
-    banner_idx = data.find(banner_pat)
-    if banner_idx < 0:
-        print(f"ERROR: linux_banner not found")
-        return None, None
-
-    banner_end = data.find(b'\x00', banner_idx)
-    banner = data[banner_idx:banner_end].decode('ascii', errors='replace')
-    print(f"Found: {banner[:80]}")
-
-    # Find kallsyms markers - look for the token_table
-    # The token table contains 256 entries of common substrings
-    # It's followed by token_index (256 uint16 entries)
-
-    # Strategy: search for known symbol names as raw strings
-    # kallsyms stores names compressed with tokens, so search for
-    # the uncompressed token fragments
-
-    # Alternative: use the existing kallsyms file if available
-    return None, banner
-
 def parse_kallsyms_file(path):
     """Parse ``address type name`` output from /proc/kallsyms, nm, or compact readelf."""
     symbols = {}
