@@ -1,7 +1,10 @@
 #!/usr/bin/env python3
-"""Extract target.h offsets from boot.img's embedded kallsyms table."""
+"""Extract target.h offsets from a kallsyms symbol table."""
 
-import struct, sys, re, os
+import argparse
+import os
+import re
+from pathlib import Path
 
 SYMBOLS_NEEDED = {
     "INIT_TASK_OFF": "init_task",
@@ -38,43 +41,98 @@ SPECIAL_RULES = {
     "SECURITY_HOOK_HEADS_OFF": ("security_hook_heads", 0),
 }
 
-def find_kallsyms_in_kernel(data):
-    """Find and parse the embedded kallsyms table in a raw kernel image."""
-    # Look for the linux_banner string to find kernel base
-    banner_pat = b"Linux version "
-    banner_idx = data.find(banner_pat)
-    if banner_idx < 0:
-        print(f"ERROR: linux_banner not found")
-        return None, None
-
-    banner_end = data.find(b'\x00', banner_idx)
-    banner = data[banner_idx:banner_end].decode('ascii', errors='replace')
-    print(f"Found: {banner[:80]}")
-
-    # Find kallsyms markers - look for the token_table
-    # The token table contains 256 entries of common substrings
-    # It's followed by token_index (256 uint16 entries)
-
-    # Strategy: search for known symbol names as raw strings
-    # kallsyms stores names compressed with tokens, so search for
-    # the uncompressed token fragments
-
-    # Alternative: use the existing kallsyms file if available
-    return None, banner
+OFFSET_FIELDS = {
+    "INIT_TASK_OFF": "off_init_task",
+    "INIT_CRED_OFF": "off_init_cred",
+    "INIT_UTS_NS_OFF": "off_init_uts_ns",
+    "EMPTY_ZERO_PAGE_OFF": "off_empty_zero_page",
+    "ROOT_TASK_GROUP_OFF": "off_root_task_group",
+    "SELINUX_ENFORCING_OFF": "off_selinux_enforcing",
+    "KPTR_RESTRICT_OFF": "off_kptr_restrict",
+    "SELINUX_BLOB_SIZES_OFF": "off_selinux_blob_sizes",
+    "SECURITY_HOOK_HEADS_OFF": "off_security_hook_heads",
+    "KMALLOC_CACHES_OFF": "off_kmalloc_caches",
+    "ANON_PIPE_BUF_OPS_OFF": "off_anon_pipe_buf_ops",
+    "ASHMEM_MISC_FOPS_OFF": "off_ashmem_misc_fops",
+    "ASHMEM_FOPS_OFF": "off_ashmem_fops",
+    "ASHMEM_IOCTL_OFF": "off_ashmem_ioctl",
+    "ASHMEM_COMPAT_IOCTL_OFF": "off_ashmem_compat_ioctl",
+    "ASHMEM_MMAP_OFF": "off_ashmem_mmap",
+    "ASHMEM_OPEN_OFF": "off_ashmem_open",
+    "ASHMEM_RELEASE_OFF": "off_ashmem_release",
+    "ASHMEM_SHOW_FDINFO_OFF": "off_ashmem_show_fdinfo",
+    "CONFIGFS_READ_ITER_OFF": "off_configfs_read_iter",
+    "CONFIGFS_BIN_WRITE_ITER_OFF": "off_configfs_bin_write_iter",
+    "COPY_SPLICE_READ_OFF": "off_copy_splice_read",
+    "NOOP_LLSEEK_OFF": "off_noop_llseek",
+    "CAP_CAPABLE_ACTIVE_OFF": "off_cap_capable_active",
+    "SLIDE_NFULNL_LOGGER_OFF": "off_slide_nfulnl_logger",
+    "SLIDE_LOGGERS_0_1_OFF": "off_slide_loggers_0_1",
+    "SLIDE_RANDOM_BOOT_ID_DATA_OFF": "off_slide_boot_id",
+    "SLIDE_SYSCTL_BOOTID_OFF": "off_slide_boot_id",
+}
 
 def parse_kallsyms_file(path):
-    """Parse a kallsyms text file (from /proc/kallsyms or nm output)."""
+    """Parse ``address type name`` output from /proc/kallsyms, nm, or compact readelf."""
     symbols = {}
     with open(path, 'r') as f:
         for line in f:
             parts = line.strip().split()
             if len(parts) >= 3:
-                addr = int(parts[0], 16)
+                try:
+                    addr = int(parts[0], 16)
+                except ValueError:
+                    continue
                 typ = parts[1]
                 name = parts[2]
                 if addr > 0:
                     symbols[name] = (addr, typ)
     return symbols
+
+
+def parse_target_header(path):
+    """Parse hexadecimal *_OFF values from a target header."""
+    offsets = {}
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            m = re.match(r'#define\s+(\w+_OFF)\s+(0x[0-9a-fA-F]+)', line)
+            if m:
+                offsets[m.group(1)] = int(m.group(2), 16)
+    return offsets
+
+
+def find_kernel_release_offsets(kernel_release):
+    """Find expected offsets for an exact uname -r in the device table."""
+    devices_dir = Path(__file__).resolve().parents[1] / "src" / "devices"
+    entry_pattern = re.compile(
+        r'OFFSETS_ENTRY\(\s*"([^"]+)"(?P<body>.*?)(?=\n\s*\),)',
+        re.DOTALL,
+    )
+    known_releases = []
+
+    for path in sorted(devices_dir.glob("*/offsets.h")):
+        contents = path.read_text(encoding="utf-8")
+        for entry in entry_pattern.finditer(contents):
+            release = entry.group(1)
+            known_releases.append(release)
+            if release != kernel_release:
+                continue
+
+            offsets = {}
+            for define_name, field_name in OFFSET_FIELDS.items():
+                field = re.search(
+                    rf'\.{re.escape(field_name)}\s*=\s*(0x[0-9a-fA-F]+|[0-9]+)',
+                    entry.group("body"),
+                )
+                if field:
+                    offsets[define_name] = int(field.group(1), 0)
+            return path.parent.name, offsets
+
+    known = "\n".join(f"  {release}" for release in known_releases)
+    raise ValueError(
+        f"kernel release is not in the device offset tables: {kernel_release}\n"
+        f"Known releases:\n{known or '  (none)'}"
+    )
 
 def find_symbol(symbols, sym_name):
     """Find a symbol by exact match, then substring match."""
@@ -162,7 +220,9 @@ def compute_offsets(symbols, kimage_base):
     if not addr:
         # Try Rust mangled misc device name
         for name, (a, typ) in symbols.items():
-            if "AshmemModule" in name and typ in ('d', 'D', 'b', 'B'):
+            if "AshmemModule" in name and typ in {
+                "d", "D", "b", "B", "OBJECT", "TLS", "COMMON"
+            }:
                 addr = a
                 break
     if addr:
@@ -184,18 +244,23 @@ def compute_offsets(symbols, kimage_base):
     return results
 
 def main():
-    # Check for existing kallsyms file
-    kallsyms_path = None
-    for p in ["C:/Android/kallsyms_fresh.txt", "C:/Android/kallsyms.txt"]:
-        if os.path.exists(p):
-            kallsyms_path = p
-            break
+    parser = argparse.ArgumentParser(
+        description="Extract target.h offsets from a kallsyms symbol table."
+    )
+    parser.add_argument(
+        "--kallsyms",
+        required=True,
+        help="path to a /proc/kallsyms dump or nm-format symbol file",
+    )
+    parser.add_argument(
+        "--kernel-release",
+        help="exact uname -r; compare against the matching src/devices entry",
+    )
+    args = parser.parse_args()
+    kallsyms_path = args.kallsyms
 
-    if not kallsyms_path:
-        print("ERROR: No kallsyms file found. Provide /proc/kallsyms dump or extract from vmlinux.")
-        print("  With root: adb shell su -c 'cat /proc/kallsyms' > kallsyms.txt")
-        print("  From boot.img: nm vmlinux > kallsyms.txt")
-        sys.exit(1)
+    if not os.path.isfile(kallsyms_path):
+        parser.error(f"kallsyms file does not exist: {kallsyms_path}")
 
     print(f"Using kallsyms: {kallsyms_path}")
     symbols = parse_kallsyms_file(kallsyms_path)
@@ -215,46 +280,57 @@ def main():
 
     results = compute_offsets(symbols, kimage_base)
 
-    # Read current target.h for comparison
-    target_h = os.path.join(os.path.dirname(__file__), "..", "src", "core", "target.h")
-    current = {}
-    if os.path.exists(target_h):
-        with open(target_h, encoding='utf-8') as f:
-            for line in f:
-                m = re.match(r'#define\s+(\w+_OFF)\s+(0x[0-9a-fA-F]+)', line)
-                if m:
-                    current[m.group(1)] = int(m.group(2), 16)
+    if args.kernel_release:
+        kernel_release = args.kernel_release.strip()
+        try:
+            target_name, baseline = find_kernel_release_offsets(kernel_release)
+        except (OSError, ValueError) as error:
+            parser.error(str(error))
+        baseline_label = "Expected"
+        print(f"Comparing against: {target_name} ({kernel_release})")
+    else:
+        target_h = os.path.join(os.path.dirname(__file__), "..", "src", "core", "target.h")
+        baseline = parse_target_header(target_h) if os.path.exists(target_h) else {}
+        baseline_label = "Default"
+        print("Comparing against: src/core/target.h (default fallback)")
 
     print("\n=== Extracted Offsets ===")
-    print(f"{'Define':<40} {'Extracted':>14} {'Current':>14} {'Match':>6}")
+    print(f"{'Define':<40} {'Extracted':>14} {baseline_label:>14} {'Match':>6}")
     print("-" * 80)
 
     all_match = True
-    for name in sorted(results.keys()):
-        extracted = results[name]
-        cur = current.get(name)
+    names = set(results)
+    if args.kernel_release:
+        names.update(baseline)
+    for name in sorted(names):
+        extracted = results.get(name)
+        expected = baseline.get(name)
 
         if extracted is not None:
             ext_str = f"0x{extracted:08X}"
         else:
             ext_str = "NOT FOUND"
 
-        if cur is not None:
-            cur_str = f"0x{cur:08X}"
+        if expected is not None:
+            expected_str = f"0x{expected:08X}"
         else:
-            cur_str = "N/A"
+            expected_str = "N/A"
 
-        if extracted is not None and cur is not None:
-            match = "OK" if extracted == cur else "DIFF!"
+        if extracted is not None and expected is not None:
+            match = "OK" if extracted == expected else "DIFF!"
             if match == "DIFF!":
                 all_match = False
+        elif extracted is None and expected == 0:
+            # A zero in a device entry means that the optional symbol/path is
+            # intentionally unavailable for that kernel.
+            match = "OK"
         elif extracted is None:
             match = "MISS"
             all_match = False
         else:
             match = "NEW"
 
-        print(f"{name:<40} {ext_str:>14} {cur_str:>14} {match:>6}")
+        print(f"{name:<40} {ext_str:>14} {expected_str:>14} {match:>6}")
 
     print(f"\n{'ALL MATCH' if all_match else 'DIFFERENCES FOUND'}")
 
@@ -287,18 +363,30 @@ def verify_offsets(results, symbols, kimage_base):
     print("\n=== Verification ===")
 
     # 1. Symbol type checks
+    data_types = {
+        "D", "d", "B", "b", "R", "r", "S", "s", "G", "g", "C", "c"
+    }
+    data_types_available = any(typ in data_types for _, typ in symbols.values())
     type_checks = {
-        "init_task": ("D", "B", "d", "b"),    # data/bss
-        "init_cred": ("D", "d"),               # data (initialized)
-        "selinux_state": ("B", "b"),            # bss
-        "loggers": ("D", "d"),                  # data
-        "noop_llseek": ("T", "t"),              # text (function)
-        "copy_splice_read": ("T", "t"),         # text
+        "init_task": ("D", "B", "d", "b", "OBJECT", "TLS", "COMMON"),
+        "init_cred": ("D", "d", "OBJECT", "TLS", "COMMON"),
+        "selinux_state": ("B", "b", "OBJECT", "TLS", "COMMON"),
+        "loggers": ("D", "d", "OBJECT", "TLS", "COMMON"),
+        "noop_llseek": ("T", "t", "FUNC", "IFUNC"),
+        "copy_splice_read": ("T", "t", "FUNC", "IFUNC"),
     }
     for sym_name, expected_types in type_checks.items():
         t = sym_type(sym_name)
         if t and t not in expected_types:
-            errors.append(f"  {sym_name}: type='{t}', expected one of {expected_types}")
+            if not data_types_available and sym_name in {
+                "init_task", "init_cred", "selinux_state", "loggers"
+            } and t in {"T", "t"}:
+                warnings.append(
+                    f"  {sym_name}: type='{t}' is unverified; symbol file has no "
+                    "data-symbol types (likely a reconstructed ELF with a merged WAX section)"
+                )
+            else:
+                errors.append(f"  {sym_name}: type='{t}', expected one of {expected_types}")
         elif t:
             print(f"  [OK] {sym_name} type='{t}'")
 

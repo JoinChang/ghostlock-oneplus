@@ -113,6 +113,13 @@ FIELDS_NEEDED = {
         "filter_count": "SECCOMP_FILTER_COUNT_OFF",
         "filter": "SECCOMP_FILTER_OFF",
     },
+    "selinux_state": {
+        "enforcing": "SELINUX_STATE_ENFORCING_OFF",
+        "initialized": "SELINUX_STATE_INITIALIZED_OFF",
+        "policycap": "SELINUX_STATE_POLICYCAP_OFF",
+        "android_netlink_route": "SELINUX_STATE_NETLINK_ROUTE_OFF",
+        "android_netlink_getneigh": "SELINUX_STATE_NETLINK_GETNEIGH_OFF",
+    },
     "pipe_inode_info": {
         "head": "PIPE_HEAD_OFF",
         "tail": "PIPE_TAIL_OFF",
@@ -143,6 +150,21 @@ FIELDS_NEEDED = {
     },
 }
 
+def print_offset_header():
+    print(f"  {'Define':<40} {'Extracted':>8} {'Expected':>8} {'Match':>6}")
+    print(f"  {'-' * 40} {'-' * 8} {'-' * 8} {'-' * 6}")
+
+def print_offset_row(define_name, extracted, expected):
+    extracted_text = f"0x{extracted:X}" if extracted is not None else "MISS"
+    expected_text = f"0x{expected:X}" if expected is not None else "N/A"
+    if extracted is not None and expected is not None:
+        match = "OK" if extracted == expected else "DIFF!"
+    elif extracted is not None:
+        match = "NEW"
+    else:
+        match = "MISS"
+    print(f"  {define_name:<40} {extracted_text:>8} {expected_text:>8} {match:>6}")
+
 def main():
     kernel_path = sys.argv[1] if len(sys.argv) > 1 else "C:/Android/kernel_raw"
     data = open(kernel_path, 'rb').read()
@@ -165,30 +187,25 @@ def main():
     if os.path.exists(target_h):
         with open(target_h, encoding='utf-8') as f:
             for line in f:
-                m = re.match(r'#define\s+(\w+_OFF)\s+(0x[0-9a-fA-F]+)', line)
+                m = re.match(r'#define\s+(\w+_OFF)\s+(0x[0-9a-fA-F]+|[0-9]+)', line)
                 if m:
-                    current[m.group(1)] = int(m.group(2), 16)
+                    current[m.group(1)] = int(m.group(2), 0)
 
     results = {}
+    struct_reports = []
     for struct_name, fields in FIELDS_NEEDED.items():
         hits = find_struct_in_btf(type_data, str_data, struct_name)
         if not hits:
-            print(f"\n{struct_name}: NOT FOUND")
+            struct_reports.append((struct_name, None, None, fields))
             continue
         # Pick the largest match (most members = most complete definition)
         size, members = max(hits, key=lambda x: len(x[1]))
         member_dict = {name: off for name, off in members}
-        print(f"\n{struct_name} (size={size}, {len(members)} members):")
         for field_name, define_name in sorted(fields.items(), key=lambda x: x[1]):
             off = member_dict.get(field_name)
-            cur = current.get(define_name)
-            b = f"0x{off:X}" if off is not None else "MISS"
-            c = f"0x{cur:X}" if cur is not None else "N/A"
-            match = "OK" if (off is not None and cur is not None and off == cur) else \
-                    "DIFF!" if (off is not None and cur is not None and off != cur) else "MISS"
-            print(f"  {define_name:<40} {b:>8} {c:>8} {match:>6}")
             if off is not None:
                 results[define_name] = off
+        struct_reports.append((struct_name, size, len(members), fields))
 
     # Handle fields in nested/anonymous structs
     # mm_struct.owner: inside anonymous inner struct, find by brute-force
@@ -207,7 +224,6 @@ def main():
                     byte_off = bit_off // 8
                     if 0x100 <= byte_off <= 0x800:
                         results["MM_OWNER_OFF"] = byte_off
-                        print(f"\n  MM_OWNER_OFF (brute-force): 0x{byte_off:X}")
                         break
             if "MM_OWNER_OFF" in results and results["MM_OWNER_OFF"] is not None:
                 break
@@ -215,17 +231,25 @@ def main():
 
     # rt_mutex_waiter.prio/deadline: after rb_node (24 bytes) in tree field
     # tree is at offset 0, rb_node is 24 bytes, then prio(4) + pad(4) + deadline(8)
-    if "WAITER_PRIO_OFF" not in results or results["WAITER_PRIO_OFF"] is None:
-        tree_off = results.get("WAITER_TREE_ENTRY_OFF", 0)
+    if ("WAITER_PRIO_OFF" not in results or results["WAITER_PRIO_OFF"] is None or
+            "WAITER_DEADLINE_OFF" not in results or results["WAITER_DEADLINE_OFF"] is None):
+        tree_off = results.get("WAITER_TREE_ENTRY_OFF")
         if tree_off is not None:
             # rb_node is 24 bytes, prio follows
             results["WAITER_PRIO_OFF"] = tree_off + 0x18
             results["WAITER_DEADLINE_OFF"] = tree_off + 0x20
-            print(f"\n  WAITER_PRIO_OFF (derived): 0x{tree_off + 0x18:X}")
-            print(f"  WAITER_DEADLINE_OFF (derived): 0x{tree_off + 0x20:X}")
+
+    for struct_name, size, member_count, fields in struct_reports:
+        if size is None:
+            print(f"\n{struct_name}: NOT FOUND")
+            continue
+        print(f"\n{struct_name} (size={size}, {member_count} members):")
+        print_offset_header()
+        for _, define_name in sorted(fields.items(), key=lambda x: x[1]):
+            print_offset_row(define_name, results.get(define_name), current.get(define_name))
 
     found = sum(1 for v in results.values() if v is not None)
-    total = sum(len(f) for f in FIELDS_NEEDED.values()) + 3  # +3 for special fields
+    total = sum(len(f) for f in FIELDS_NEEDED.values())
     print(f"\nExtracted: {found}/{total}")
 
 if __name__ == "__main__":

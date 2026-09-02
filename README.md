@@ -22,7 +22,7 @@ The `pselect6` syscall copies `fd_set` data onto the kernel stack. When combined
 |--------|-----|--------|--------|
 | OnePlus Ace 6T (PLR110) | SM8845 | `6.12.38-...-ab14275539` | **Working** |
 | OnePlus Ace 6T (PLR110) | SM8845 | `6.12.38-...-ab14552068` | **Working** |
-| OnePlus 15 (CPH2749) | SM8850 | `6.12.23-...-ab14541642` | **Working** |
+| OnePlus 15 (CPH2745 / CPH2747 / CPH2749) | SM8850 | `6.12.23-...-ab14541642` | **Working** |
 | Xiaomi 17 (pudding) | SM8850 | `6.12.23-...-abogki463945075` | **Working** |
 | Xiaomi 17 (pudding) | SM8850 | `6.12.69-...-abogki514973465` | **Working** (August 2026 update) |
 | OnePlus 13 (IN2060) | SM8750 | `6.6.89-...-abogki446052083` | **Working** (`PSELECT_SHIFT=-2`) |
@@ -93,7 +93,7 @@ Root shell         →  ksud late-load (KernelSU LKM)
                    →  dynamic manager registration
 ```
 
-### Bootstrap Mode (phone standalone)
+### Bootstrap Mode (phone standalone, optional)
 
 ```
 App (seccomp)  →  Write 1 (no perf needed)
@@ -102,10 +102,10 @@ App (seccomp)  →  Write 1 (no perf needed)
                →  root → KSU → network fix
 ```
 
-### Auto-Boot (via ReSukiSU integration)
+### Optional auto-boot integration
 
 ```
-BOOT_COMPLETED → BootCompletedReceiver
+BOOT_COMPLETED → companion-app BootCompletedReceiver
   ├─ su available → skip (soft reboot / already rooted)
   └─ no root → GhostlockService → setsid exploit --bootstrap
 ```
@@ -194,14 +194,35 @@ echo 'p:rw rt_mutex_wait_proxy_lock waiter=%x2' >> /sys/kernel/tracing/kprobe_ev
 
 ## Build
 
+Build from the repository root. The recommended command is:
+
+```bash
+cd /path/to/ghostlock-oneplus
+make NDK_ROOT=/path/to/android-ndk
+```
+
+This creates the executable at:
+
+```text
+/path/to/ghostlock-oneplus/ghostlock
+```
+
+In other words, the output is `./ghostlock` in the directory where `make` is
+run; it is not placed inside the NDK or under `src/`. On Windows, run this
+build from WSL or another Linux environment and use the resulting ARM64
+executable.
+
+To invoke the compiler directly instead of `make`, run this command from the
+same repository root. The `-o ./ghostlock` option writes to that same location:
+
 ```bash
 NDK=/path/to/android-ndk
-$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android35-clang \
-  -O2 -Wall -Isrc/core -Isrc/devices -DTARGET_CONFIG_H="target.h" \
+"$NDK/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android35-clang" \
+  -O2 -Wall -Isrc/core -Isrc/devices -DTARGET_CONFIG_H=\"target.h\" \
   src/core/main.c src/core/util.c src/core/slide.c \
   src/core/fops.c src/core/pipe_physrw.c src/core/root.c \
   src/core/miniadb.c src/core/umh_root.c \
-  -o ghostlock -fPIE -pie -pthread
+  -o ./ghostlock -fPIE -pie -pthread
 ```
 
 ## Prerequisites
@@ -217,32 +238,90 @@ GhostLock only provides root. KernelSU installation depends on **ksud** — a bi
 
 > Without ksud, the exploit achieves root (uid=0) but KSU won't be installed and `su` won't persist.
 
-## Setup (one-time)
+## Setup and direct ADB run
+
+The normal run uses the connected device's ADB shell. Before starting, make
+sure USB debugging is enabled, the device is unlocked enough to approve the
+computer's ADB key, and `adb devices` shows the device with state `device`:
 
 ```bash
-# Enable ADB TCP (use any port)
-adb tcpip 5555
-
-# Push exploit binary and ADB key
-adb push ghostlock /data/local/tmp/a/e && adb shell chmod 755 /data/local/tmp/a/e
-adb push ~/.android/adbkey /data/local/tmp/a/adbkey
-
-# If using a non-default ADB port (e.g. 23946):
-adb shell "echo 23946 > /data/local/tmp/a/adb_port"
+adb devices
 ```
 
-After first successful jailbreak, `persist.adb.tcp.port` is set via `resetprop` — subsequent boots are fully automatic.
+If the state is `unauthorized`, unlock the phone, approve the RSA prompt, and
+run `adb devices` again.
+
+Build `ghostlock` first, then run these commands from the repository root:
+
+```bash
+# Create the directory on the phone, then copy the host binary there.
+adb shell mkdir -p /data/local/tmp/a
+adb push ./ghostlock /data/local/tmp/a/e
+adb shell chmod 755 /data/local/tmp/a/e
+```
+
+Execute the copied binary on the phone with:
+
+```bash
+adb shell /data/local/tmp/a/e
+```
+
+`adb shell` is important: `/data/local/tmp/a/e` is a path on the phone, so
+entering that path by itself in the computer's terminal will not run it. If
+you rebuild the binary, repeat the `adb push` and `chmod` commands before
+running it again. In PowerShell, `./ghostlock` can also be written as
+`.\ghostlock`.
+
+## Optional bootstrap mode
+
+`--bootstrap` is for launching from an app or another restricted phone-side
+process. The normal direct ADB command above is the preferred way to run the
+exploit from a computer. Bootstrap mode needs a local ADB-over-TCP endpoint and
+the ADB private key used to authenticate to it:
+
+```bash
+# Enable ADB TCP on the connected phone (the default port is 5555).
+adb tcpip 5555
+
+# The binary should already be installed at /data/local/tmp/a/e.
+adb push ~/.android/adbkey /data/local/tmp/a/adbkey
+
+# Optional: use another port. The two commands must use the same port.
+# adb tcpip 23946
+# adb shell "echo 23946 > /data/local/tmp/a/adb_port"
+
+# Launch the phone-side bootstrap flow.
+adb shell /data/local/tmp/a/e --bootstrap
+```
+
+On Windows PowerShell, the private key is usually
+`$env:USERPROFILE\.android\adbkey`. Treat this file as sensitive.
+
+A successful run changes the current kernel and can load KernelSU through
+`ksud`. ReSukiSU jailbreak-mode state is tied to the current boot; after a
+reboot, run the exploit again unless a separate boot-time integration is
+configured. An ADB TCP setting only controls how ADB connects and does not by
+itself preserve root.
 
 ## Usage
 
 ```bash
-/data/local/tmp/a/e                        # Full exploit (adb shell)
-/data/local/tmp/a/e --bootstrap            # Phone standalone (app context)
-/data/local/tmp/a/e --write1               # SELinux disable only
-PSELECT_SHIFT=-2 /data/local/tmp/a/e       # Override stack layout shift
+# Run from a computer through ADB.
+adb shell /data/local/tmp/a/e
+
+# Optional phone-side mode for a companion app.
+adb shell /data/local/tmp/a/e --bootstrap
+
+# Diagnostic/partial operation.
+adb shell /data/local/tmp/a/e --write1
+
+# OnePlus 13 / another profile that needs a shift override.
+adb shell "PSELECT_SHIFT=-2 /data/local/tmp/a/e"
 ```
 
-> **Important**: Run within 30 seconds of boot for best KernelSnitch timing reliability.
+Start after Android has finished booting and ADB is ready. There is no fixed
+30-second post-boot deadline; if a timing-sensitive attempt reports a timeout,
+run the command again.
 
 ## Adding New Devices / Kernel Versions
 
@@ -255,8 +334,14 @@ Only `boot.img` is needed — no root, no device access required.
 python -c "import struct; d=open('boot.img','rb').read(); open('kernel','wb').write(d[4096:4096+struct.unpack_from('<I',d,8)[0]])"
 
 # 2. Global symbols (kallsyms)
-python tools/extract_target.py    # 28 offsets, auto-validated
+python tools/extract_target.py --kallsyms kallsyms.txt    # 28 offsets, auto-validated
+```
 
+For stage 2, use the [kallsyms tools guide](tools/kallsyms/GUIDE.md) to recover
+`kallsyms.txt` from `boot.img`. It covers kernel extraction, `vmlinux`
+reconstruction, and symbol export, starting with the standard AOSP path.
+
+```bash
 # 3. Struct fields (BTF)
 python tools/extract_btf.py kernel  # 57 offsets, auto-validated
 
