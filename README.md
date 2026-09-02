@@ -102,7 +102,12 @@ App (seccomp)  →  Write 1 (no perf needed)
                →  root → KSU → network fix
 ```
 
-### Optional auto-boot integration
+### Optional auto-boot integration (external Anchor app)
+
+The boot-time launcher is provided by the separate [GhostLock Anchor
+app](https://github.com/byemaxx/ghostlock-anchor). It is not included in this
+repository; this section describes how that companion app invokes the native
+binary after boot:
 
 ```
 BOOT_COMPLETED → companion-app BootCompletedReceiver
