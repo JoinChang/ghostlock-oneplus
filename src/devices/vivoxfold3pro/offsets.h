@@ -3,7 +3,7 @@
  * C ashmem (ashmem_miscs), UMH root available */
 
 OFFSETS_ENTRY("6.1.124-android14-11-maybe-dirty",
-  .kernel_phys_load=0, STRUCT_OFFSETS_6_1,
+  .kernel_phys_load=0xa8000000, STRUCT_OFFSETS_6_1,
   .kimage_text_base=0xffffffc008000000ULL,
   .off_init_task=0x0219FB80, .off_init_cred=0x021B2470, .off_init_uts_ns=0x023792C0,
   .off_empty_zero_page=0x023D8000, .off_root_task_group=0x023DF740,

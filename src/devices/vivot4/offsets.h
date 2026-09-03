@@ -3,7 +3,7 @@
  * C ashmem (ashmem_miscs), UMH root available */
 
 OFFSETS_ENTRY("6.1.145-android14-11-g74d1702dab4d-ab14669069",
-  .kernel_phys_load=0, STRUCT_OFFSETS_6_1,
+  .kernel_phys_load=0xa8000000, STRUCT_OFFSETS_6_1,
   .kimage_text_base=0xffffffc008000000ULL,
   .off_init_task=0x0200F600, .off_init_cred=0x02021A68, .off_init_uts_ns=0x02192170,
   .off_empty_zero_page=0x021F0000, .off_root_task_group=0x021F7580,
