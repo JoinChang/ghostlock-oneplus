@@ -98,6 +98,7 @@ static const struct kernel_offsets known_offsets[] = {
 #include "vivot4/offsets.h"
 #include "vivoxfold3pro/offsets.h"
 #include "xperia1iv/offsets.h"
+#include "findx9pro/offsets.h"
   { .uname_r = NULL }
 };
 
