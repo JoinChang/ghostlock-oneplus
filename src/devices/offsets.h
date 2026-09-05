@@ -34,6 +34,12 @@ struct kernel_offsets {
   uint32_t mm_owner;
   uint32_t waiter_compact;
   uint64_t kimage_text_base;
+
+  /* Per-kernel-version file_operations field offsets.
+   * 0 = use target.h default (6.12 layout with fop_flags).
+   * 5.10/6.1 lack fop_flags so every field before .unlocked_ioctl shifts. */
+  uint32_t fops_llseek, fops_read, fops_write, fops_read_iter, fops_write_iter;
+  uint32_t fops_open, fops_release, fops_splice_read, fops_show_fdinfo;
 };
 
 #define OFFSETS_ENTRY(uname, ...) { .uname_r = uname, __VA_ARGS__ }
@@ -54,7 +60,10 @@ struct kernel_offsets {
   .task_pid=0x6D8, .task_tgid=0x6DC, .task_real_parent=0x688, \
   .task_atomic_flags=0x638, .task_real_cred=0x830, .task_cred=0x838, \
   .task_comm=0x848, .task_tasks=0x678, .task_seccomp=0xAA0, \
-  .mm_owner=0x298, .waiter_compact=1
+  .mm_owner=0x298, .waiter_compact=1, \
+  .fops_llseek=0x08, .fops_read=0x10, .fops_write=0x18, .fops_read_iter=0x20, \
+  .fops_write_iter=0x28, .fops_open=0x70, .fops_release=0x80, \
+  .fops_splice_read=0xC8, .fops_show_fdinfo=0xE0
 
 #define STRUCT_OFFSETS_5_10 \
   .task_prio=0x84, .task_normal_prio=0x8C, .task_sched_task_group=0x310, \
@@ -63,7 +72,10 @@ struct kernel_offsets {
   .task_pid=0x5C8, .task_tgid=0x5CC, .task_real_parent=0x5D8, \
   .task_atomic_flags=0x590, .task_real_cred=0x778, .task_cred=0x780, \
   .task_comm=0x790, .task_tasks=0x4C8, .task_seccomp=0x848, \
-  .mm_owner=0x348, .waiter_compact=1
+  .mm_owner=0x348, .waiter_compact=1, \
+  .fops_llseek=0x08, .fops_read=0x10, .fops_write=0x18, .fops_read_iter=0x20, \
+  .fops_write_iter=0x28, .fops_open=0x70, .fops_release=0x80, \
+  .fops_splice_read=0xC8, .fops_show_fdinfo=0xE0
 
 #define STRUCT_OFFSETS_6_6 \
   .task_prio=0x84, .task_normal_prio=0x8C, .task_sched_task_group=0x348, \
@@ -85,6 +97,7 @@ static const struct kernel_offsets known_offsets[] = {
 #include "cph2521/offsets.h"
 #include "vivot4/offsets.h"
 #include "vivoxfold3pro/offsets.h"
+#include "xperia1iv/offsets.h"
   { .uname_r = NULL }
 };
 
