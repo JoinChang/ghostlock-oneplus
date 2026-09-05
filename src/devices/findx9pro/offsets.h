@@ -3,7 +3,7 @@
  * MediaTek: phys_offset=0x40000000, kernel_phys_load unknown */
 
 OFFSETS_ENTRY("6.12.23-android16-5-g82efd98459a2-ab14457512-4k",
-  .kernel_phys_load=0, STRUCT_OFFSETS_6_12,
+  .kernel_phys_load=0, .phys_offset=0x40000000, STRUCT_OFFSETS_6_12,
   .off_init_task=0x023ECF00, .off_init_cred=0x02402A68, .off_init_uts_ns=0x02574650,
   .off_empty_zero_page=0x02614000, .off_root_task_group=0x0261C580,
   .off_selinux_enforcing=0x026684F0, .off_kptr_restrict=0x023EB638,
