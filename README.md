@@ -10,7 +10,7 @@ Kernel exploit for Android devices with locked bootloader. Achieves temporary ro
 
 **CVE-2026-43499** — Futex PI (Priority Inheritance) Use-After-Free
 
-Affects Linux kernel 5.7 ~ 7.1 (`CONFIG_FUTEX_PI=y`). Android kernels 5.10, 5.15, 6.1, 6.6, 6.12 are all in range. Kernel 5.4 and below are **not affected**. Fixed in stable 6.1.175, 6.6.140, 6.12.86. Most Android devices remain unpatched as of September 2026.
+Affects Linux kernel 5.7 ~ 7.1. Fixed in stable 6.1.175, 6.6.140, 6.12.86. Most Android devices remain unpatched as of September 2026.
 
 The `pselect6` syscall copies `fd_set` data onto the kernel stack. When combined with the futex PI waiter mechanism, a freed stack frame can be reclaimed as an `rt_mutex_waiter` structure. The rb-tree rebalance during PI chain walk then writes controlled values to arbitrary kernel addresses.
 
