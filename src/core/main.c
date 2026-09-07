@@ -195,12 +195,19 @@ void *consumer_thread(void *arg __attribute__((unused))) {
         atomic_fetch_add(&consumer_calls, 1);
         errno = 0;
         long sched_ret = sched_setattr_tid(tid, PSELECT_CONSUMER_NICE);
+        int sched_errno = errno;
         if (sched_ret != 0) {
+          errno = 0;
           struct timespec ft = {.tv_sec = 0, .tv_nsec = 50000000};
           long fret = futex_op(&f_pi_target, FUTEX_LOCK_PI, 0, &ft, NULL, 0);
+          int futex_errno = errno;
           if (fret == 0) {
             futex_op(&f_pi_target, FUTEX_UNLOCK_PI, 0, NULL, NULL, 0);
             sched_ret = 0;
+          } else {
+            pr_info("consumer: sched_setattr tid=%d ret=%ld errno=%d; "
+                    "FUTEX_LOCK_PI ret=%ld errno=%d\n",
+                    tid, sched_ret, sched_errno, fret, futex_errno);
           }
         }
         if (sched_ret == 0) atomic_fetch_add(&consumer_success, 1);
