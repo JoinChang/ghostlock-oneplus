@@ -4,9 +4,14 @@
 #include "../devices/offsets.h"
 
 extern const struct kernel_offsets *active_offsets;
+extern uint64_t p0_kimage_text_base;
 
 #define _RSO(field, fallback) (active_offsets && active_offsets->field ? active_offsets->field : (fallback))
 #define _RSO_64(field, fallback) ((uint64_t)(active_offsets && active_offsets->field ? active_offsets->field : (fallback)))
+
+#define _KIMAGE_TEXT_BASE_DEFAULT 0xffffffc080000000ULL
+#undef KIMAGE_TEXT_BASE
+#define KIMAGE_TEXT_BASE p0_kimage_text_base
 
 #undef SYSTEM_UNBOUND_WQ_OFF
 #undef CALL_USERMODEHELPER_EXEC_WORK_OFF

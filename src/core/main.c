@@ -97,6 +97,9 @@ static int select_offsets(void) {
       if (active_offsets->phys_offset) {
         p0_phys_offset = active_offsets->phys_offset;
       }
+      if (active_offsets->kimage_text_base) {
+        p0_kimage_text_base = active_offsets->kimage_text_base;
+      }
       pr_info("init_cred image=%016zx alias=%016zx\n",
               (size_t)g_init_cred_image, (size_t)data_addr(g_init_cred_image));
       return 0;

@@ -273,10 +273,12 @@ int has_zero_byte(uintptr_t value) {
  * boots. Override at runtime with KPHYS=0x... when porting to a new board. */
 uint64_t p0_kernel_phys_load = P0_KERNEL_PHYS_LOAD;
 uint64_t p0_phys_offset = P0_PHYS_OFFSET;
+uint64_t p0_kimage_text_base = _KIMAGE_TEXT_BASE_DEFAULT;
 
-uintptr_t g_init_cred_image = INIT_CRED;
+uintptr_t g_init_cred_image;
 
 void init_p0_profile(void) {
+  if (!g_init_cred_image) g_init_cred_image = INIT_CRED;
   char *v = getenv("KPHYS");
   if (v) {
     p0_kernel_phys_load = strtoull(v, NULL, 0);

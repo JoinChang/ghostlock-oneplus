@@ -371,6 +371,7 @@ void disable_rseq_for_thread(void);
 void init_p0_profile(void);
 extern uint64_t p0_kernel_phys_load;
 extern uint64_t p0_phys_offset;
+extern uint64_t p0_kimage_text_base;
 extern uintptr_t g_init_cred_image;
 struct kernel_offsets;
 extern const struct kernel_offsets *active_offsets;
