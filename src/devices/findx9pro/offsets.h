@@ -1,9 +1,10 @@
 /* OPPO Find X9 Pro (PLG110) — Dimensity 9400 (MT6991), kernel 6.12
  * Rust ashmem, PSELECT_SHIFT=0
- * MediaTek: phys_offset=0x40000000, kernel_phys_load unknown */
+ * D9400 uses phys_offset=0x80000000 (same as Qualcomm default).
+ * kernel_phys_load=0x80000000 confirmed via ghostlock-app (#45). */
 
 OFFSETS_ENTRY("6.12.23-android16-5-g82efd98459a2-ab14457512-4k",
-  .kernel_phys_load=0, .phys_offset=0x40000000, STRUCT_OFFSETS_6_12,
+  .kernel_phys_load=0x80000000, STRUCT_OFFSETS_6_12,
   .off_init_task=0x023ECF00, .off_init_cred=0x02402A68, .off_init_uts_ns=0x02574650,
   .off_empty_zero_page=0x02614000, .off_root_task_group=0x0261C580,
   .off_selinux_enforcing=0x026684F0, .off_kptr_restrict=0x023EB638,
