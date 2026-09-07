@@ -50,13 +50,15 @@ extern const struct kernel_offsets *active_offsets;
 #define TASK_SECCOMP_OFF         _RSO(task_seccomp, 0x9C8)
 
 /* file_operations struct field offsets.
- * ioctl (0x50), compat_ioctl (0x58), mmap (0x60) are identical across
- * 5.10/6.1/6.6/6.12 and stay as target.h constants. */
+ * 6.6 also shifts ioctl/compat_ioctl/mmap (lacks iterate_shared). */
 #undef FOPS_LLSEEK_OFF
 #undef FOPS_READ_OFF
 #undef FOPS_WRITE_OFF
 #undef FOPS_READ_ITER_OFF
 #undef FOPS_WRITE_ITER_OFF
+#undef FOPS_IOCTL_OFF
+#undef FOPS_COMPAT_IOCTL_OFF
+#undef FOPS_MMAP_OFF
 #undef FOPS_OPEN_OFF
 #undef FOPS_RELEASE_OFF
 #undef FOPS_SPLICE_READ_OFF
@@ -67,6 +69,9 @@ extern const struct kernel_offsets *active_offsets;
 #define FOPS_WRITE_OFF        _RSO(fops_write, 0x20)
 #define FOPS_READ_ITER_OFF    _RSO(fops_read_iter, 0x28)
 #define FOPS_WRITE_ITER_OFF   _RSO(fops_write_iter, 0x30)
+#define FOPS_IOCTL_OFF        _RSO(fops_ioctl, 0x50)
+#define FOPS_COMPAT_IOCTL_OFF _RSO(fops_compat_ioctl, 0x58)
+#define FOPS_MMAP_OFF         _RSO(fops_mmap, 0x60)
 #define FOPS_OPEN_OFF         _RSO(fops_open, 0x68)
 #define FOPS_RELEASE_OFF      _RSO(fops_release, 0x78)
 #define FOPS_SPLICE_READ_OFF  _RSO(fops_splice_read, 0xb8)

@@ -38,8 +38,10 @@ struct kernel_offsets {
 
   /* Per-kernel-version file_operations field offsets.
    * 0 = use target.h default (6.12 layout with fop_flags).
-   * 5.10/6.1 lack fop_flags so every field before .unlocked_ioctl shifts. */
+   * 5.10/6.1/6.6 lack fop_flags; 6.6 also lacks iterate_shared, shifting
+   * ioctl/compat_ioctl/mmap to yet another set of offsets. */
   uint32_t fops_llseek, fops_read, fops_write, fops_read_iter, fops_write_iter;
+  uint32_t fops_ioctl, fops_compat_ioctl, fops_mmap;
   uint32_t fops_open, fops_release, fops_splice_read, fops_show_fdinfo;
 };
 
@@ -85,7 +87,10 @@ struct kernel_offsets {
   .task_pid=0x618, .task_tgid=0x61C, .task_real_parent=0x628, \
   .task_atomic_flags=0x5D8, .task_real_cred=0x818, .task_cred=0x820, \
   .task_comm=0x830, .task_tasks=0x550, .task_seccomp=0x8E8, \
-  .mm_owner=0x2B0
+  .mm_owner=0x2B0, \
+  .fops_llseek=0x08, .fops_read=0x10, .fops_write=0x18, .fops_read_iter=0x20, \
+  .fops_write_iter=0x28, .fops_ioctl=0x48, .fops_compat_ioctl=0x50, .fops_mmap=0x58, \
+  .fops_open=0x68, .fops_release=0x78, .fops_splice_read=0xB8, .fops_show_fdinfo=0xD8
 
 static const struct kernel_offsets known_offsets[] = {
   /* Add new devices by creating src/devices/<name>/offsets.h */
@@ -100,6 +105,7 @@ static const struct kernel_offsets known_offsets[] = {
 #include "vivoxfold3pro/offsets.h"
 #include "xperia1iv/offsets.h"
 #include "findx9pro/offsets.h"
+#include "vivox200ultra/offsets.h"
   { .uname_r = NULL }
 };
 
