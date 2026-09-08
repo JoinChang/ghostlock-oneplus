@@ -21,6 +21,7 @@ The `pselect6` syscall copies `fd_set` data onto the kernel stack. When combined
 | Device | SoC | Kernel | GKI Branch | SHIFT |
 |--------|-----|--------|------------|-------|
 | OnePlus Ace 6T (PLR110) | SM8845 | 6.12.38 | android16-5 | 0 |
+| Fire HD 10 (trona) | MT8183 | 4.4.146 | kernel-4.4 | -1 |
 | OnePlus 15 (CPH2745/2747/2749) | SM8850 | 6.12.23 | android16-5 | 0 |
 | Xiaomi 17 (pudding) | SM8850 | 6.12.23 / 6.12.69 | android16-5 / android16-6 | 0 |
 | OnePlus 13 (IN2060) | SM8750 | 6.6.89 | android15-8 | -2 |

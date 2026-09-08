@@ -1,0 +1,3 @@
+#define TARGET_DEVICE "Fire HD 10 2021 (trona)"
+#define TARGET_KERNEL "4.4.146+"
+#define TARGET_BUILD "PS7331.4463N"
