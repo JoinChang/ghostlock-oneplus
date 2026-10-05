@@ -20,6 +20,7 @@ SYMBOLS_NEEDED = {
     "SLIDE_NFULNL_LOGGER_OFF": "nfulnl_logger",
     "SLIDE_RANDOM_BOOT_ID_DATA_OFF": "sysctl_bootid",
     "SLIDE_SYSCTL_BOOTID_OFF": "sysctl_bootid",
+    "SYSTEM_UNBOUND_WQ_OFF": "system_unbound_wq",
 }
 
 FUNC_SYMBOLS = {
@@ -27,6 +28,7 @@ FUNC_SYMBOLS = {
     "CONFIGFS_BIN_WRITE_ITER_OFF": "configfs_bin_write_iter",
     "COPY_SPLICE_READ_OFF": "copy_splice_read",
     "NOOP_LLSEEK_OFF": "noop_llseek",
+    "CALL_USERMODEHELPER_EXEC_WORK_OFF": "call_usermodehelper_exec_work",
 }
 
 # Symbols needing special handling
@@ -70,6 +72,8 @@ OFFSET_FIELDS = {
     "SLIDE_LOGGERS_0_1_OFF": "off_slide_loggers_0_1",
     "SLIDE_RANDOM_BOOT_ID_DATA_OFF": "off_slide_boot_id",
     "SLIDE_SYSCTL_BOOTID_OFF": "off_slide_boot_id",
+    "SYSTEM_UNBOUND_WQ_OFF": "off_system_unbound_wq",
+    "CALL_USERMODEHELPER_EXEC_WORK_OFF": "off_call_usermodehelper_exec_work",
 }
 
 def parse_kallsyms_file(path):

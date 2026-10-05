@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -131,7 +132,7 @@ def main() -> int:
             f"Python 3.9 or newer is required by vmlinux-to-elf (found {sys.version.split()[0]})"
         )
 
-    magisk = os.environ.get("MAGISK_REPO_DIR")
+    magisk = required_env("MAGISK_REPO_DIR") if os.environ.get("MAGISK_REPO_DIR") else None
     vmlinux_to_elf = required_env("VMLINUX_TO_ELF_REPO_DIR")
     vmlinux_url = configured_url("VMLINUX_TO_ELF_REPO_URL", VMLINUX_TO_ELF_URL)
 

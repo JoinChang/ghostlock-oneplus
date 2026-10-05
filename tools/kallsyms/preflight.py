@@ -249,10 +249,13 @@ def main() -> int:
     report.check("git", check_command("git"))
     report.check("uv", check_command("uv"))
 
-    try:
+    if os.environ.get("MAGISK_REPO_DIR"):
         magisk = required_env("MAGISK_REPO_DIR")
-    except RuntimeError as error:
-        report.fail("MAGISK_REPO_DIR", str(error))
+    elif args.check_native_build:
+        report.fail("MAGISK_REPO_DIR", "required when checking the Magisk native build")
+        magisk = None
+    else:
+        report.ok("Magisk repository", "skipped (MAGISK_REPO_DIR is unset)")
         magisk = None
     try:
         vmlinux_to_elf = required_env("VMLINUX_TO_ELF_REPO_DIR")

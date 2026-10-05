@@ -159,6 +159,20 @@ embedded-table file is a separate representation of the same kernel symbols.
 
 ### 6. Extract the target offsets
 
+When adding a release that is not yet in `src/devices/*/offsets.h`, first run
+without `--kernel-release` to print the recovered offsets:
+
+```sh
+python3 tools/extract_target.py --kallsyms analysis/kallsyms.txt
+```
+
+This compares against the default header, so `DIFF!` rows are expected for a
+new build. It includes the two UMH workqueue symbols. Review missing symbols
+before assigning zero to optional fields; do not copy their values from a
+different build. Add the new entry after checking the structure layout in
+Step 7, then use `--kernel-release` below to verify that entry. That option
+requires an existing entry and is a comparison, not a new-entry generator.
+
 For a device connected over ADB, get the exact kernel release and pass it to
 the extractor:
 
@@ -202,16 +216,27 @@ python tools\extract_target.py `
 ### 7. Extract BTF structure offsets
 
 When the raw kernel contains BTF, run the companion extractor against the same
-kernel payload:
+kernel payload. The reconstructed ELF also contains those bytes and works
+when `analysis/kernel` is still compressed:
 
 ```sh
-python3 tools/extract_btf.py analysis/kernel
+python3 tools/extract_btf.py analysis/vmlinux
 ```
 
 Use the `OK`, `MISS`, and `DIFF!` rows to decide which fields need review before
 adding a new device entry. A derived field can be reported as `MISS` in the
 raw BTF member list and still be printed later when the tool can derive it
 from a related member.
+
+The BTF report compares against `src/core/target.h`; also check the structure
+macro selected by the device entry in `src/devices/offsets.h`. Confirm that
+`selinux_state.enforcing` is at offset zero before using the state symbol
+directly as `.off_selinux_enforcing`.
+
+`kernel_phys_load` cannot be recovered from boot.img. Use a verified profile
+for the same board as an explicitly documented assumption, or confirm it
+from a rooted device's `/proc/iomem` as described in `src/devices/offsets.h`.
+Image-derived symbol and BTF checks do not establish live-device operation.
 
 ## Optional one-command workflow
 
