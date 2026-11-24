@@ -1,0 +1,21 @@
+/* OnePlus Nord 6 (CPH2793) — SM8735 / Snapdragon 8s Gen 4, kernel 6.6
+ * CPH2793_16.0.5.702(EX01), SHIFT=-2 */
+
+OFFSETS_ENTRY("6.6.89-android15-8-g97a9aaefab9a-ab14519050-4k",
+  .kernel_phys_load=0xa8000000, STRUCT_OFFSETS_6_6,
+  .off_init_task=0x020FE280, .off_init_cred=0x02110548, .off_init_uts_ns=0,
+  .off_empty_zero_page=0, .off_root_task_group=0x022F5580,
+  .off_selinux_enforcing=0x02336EA0, .off_kptr_restrict=0,
+  .off_selinux_blob_sizes=0x016625F0, .off_security_hook_heads=0x01661EB8,
+  .off_kmalloc_caches=0, .off_anon_pipe_buf_ops=0,
+  .off_ashmem_misc_fops=0, .off_ashmem_fops=0,
+  .off_ashmem_ioctl=0, .off_ashmem_compat_ioctl=0,
+  .off_ashmem_mmap=0, .off_ashmem_open=0,
+  .off_ashmem_release=0, .off_ashmem_show_fdinfo=0,
+  .off_configfs_read_iter=0, .off_configfs_bin_write_iter=0,
+  .off_copy_splice_read=0, .off_noop_llseek=0,
+  .off_cap_capable_active=0,
+  .off_slide_nfulnl_logger=0x020F2258, .off_slide_loggers_0_1=0x020F21A8,
+  .off_slide_boot_id=0x02357E98,
+  .off_system_unbound_wq=0, .off_call_usermodehelper_exec_work=0,
+),
