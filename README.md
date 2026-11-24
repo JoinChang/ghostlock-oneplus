@@ -26,6 +26,7 @@ The `pselect6` syscall copies `fd_set` data onto the kernel stack. When combined
 | Xiaomi 17 (pudding) | SM8850 | 6.12.23 / 6.12.69 | android16-5 / android16-6 | 0 |
 | OnePlus 13 (IN2060) | SM8750 | 6.6.89 | android15-8 | -2 |
 | OPPO Pad 4 Pro | SM8750 | 6.6.89 | android15-8 | -2 |
+| OnePlus Nord 6 (CPH2793) | SM8735 | 6.6.89 | android15-8 | -2 |
 
 ### Offsets Extracted (pending device test)
 
@@ -133,6 +134,7 @@ All kernel writes use the linear-map alias. The bootloader picks `kernel_phys_lo
 | SM8845 (Ace 6T, 15T) | `0xa8000000` |
 | SM8750 (OnePlus 13, OPPO Pad 4 Pro) | `0xa8000000` |
 | SM8650 (vivo T4, X Fold3 Pro) | `0xa8000000` |
+| SM8735 (Nord 6) | `0xa8000000` |
 | SM8850 (OnePlus 15, Xiaomi 17) | `0xc7800000` |
 
 A wrong value fails silently. Read it on a rooted unit:
